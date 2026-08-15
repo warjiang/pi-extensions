@@ -1,0 +1,23 @@
+{
+  "name": "pi-extensions",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.20.0",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "check": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "dev:ark": "pnpm --filter @pi-extensions/volcengine-ark dev",
+    "dev:coding-plan": "pnpm --filter @pi-extensions/volcengine-coding-plan dev",
+    "dev:agent-plan": "pnpm --filter @pi-extensions/volcengine-agent-plan dev"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "^0.84.2",
+    "@earendil-works/pi-coding-agent": "^0.84.2",
+    "@types/node": "^24.12.4",
+    "typescript": "^5.9.3"
+  }
+}
