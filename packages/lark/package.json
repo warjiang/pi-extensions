@@ -1,0 +1,51 @@
+{
+  "name": "@ai.hermes/lark",
+  "version": "0.1.0",
+  "description": "Secure Pi integration for the official Lark CLI",
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "lark",
+    "feishu",
+    "lark-cli"
+  ],
+  "files": [
+    "extensions",
+    "skills",
+    "scripts",
+    "snapshots"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/warjiang/pi-extensions.git",
+    "directory": "packages/lark"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions/index.ts"
+    ],
+    "skills": [
+      "./skills"
+    ]
+  },
+  "scripts": {
+    "dev": "pi -e .",
+    "generate:skills": "node scripts/generate-skills.mjs --write",
+    "update:snapshots": "node scripts/generate-skills.mjs --update-snapshot --write",
+    "check:sync": "node scripts/generate-skills.mjs --check",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --experimental-strip-types --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@larksuite/cli": "1.0.87",
+    "@larksuiteoapi/node-sdk": "1.73.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*"
+  }
+}
