@@ -110,7 +110,11 @@ function publishPackages(selection, tag, dryRun, provenance) {
   for (const [, directory] of selectedPackages(selection)) {
     const current = manifest(directory);
     if (current.private) fail(`${current.name} is private`);
-    if (!dryRun && packageExists(current.name, current.version)) {
+    if (dryRun) {
+      run("npm", ["pack", "--dry-run"], { cwd: join(root, directory) });
+      continue;
+    }
+    if (packageExists(current.name, current.version)) {
       console.log(`${current.name}@${current.version} already exists; skipping`);
       continue;
     }
@@ -123,8 +127,7 @@ function publishPackages(selection, tag, dryRun, provenance) {
       "--registry",
       registry,
     ];
-    if (dryRun) args.push("--dry-run");
-    if (provenance && !dryRun) args.push("--provenance");
+    if (provenance) args.push("--provenance");
     run("npm", args, { cwd: join(root, directory) });
   }
 }

@@ -102,7 +102,7 @@ jobs:
       - name: Show release versions
         run: node scripts/release.mjs versions --package "${{ inputs.package }}"
 
-      - name: Run npm publish dry-run
+      - name: Verify npm package contents
         run: >-
           node scripts/release.mjs publish
           --package "${{ inputs.package }}"
