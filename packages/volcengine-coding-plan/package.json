@@ -1,6 +1,6 @@
 {
   "name": "@ai.hermes/volcengine-coding-plan",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Pi extension for Volcengine Coding Plan",
   "type": "module",
   "keywords": [
