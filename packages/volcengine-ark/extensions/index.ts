@@ -9,6 +9,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/compat";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { registerMediaTools } from "./media-tools.ts";
 import { displayModelId, fetchEndpointModels } from "./models.ts";
 
 export const PROVIDER_ID = "volcengine";
@@ -118,12 +119,18 @@ export function createVolcengineProvider() {
           const key = credential?.key || (await ctx.env("VOLCENGINE_API_KEY"));
           const accessKeyId = await resolveField(ctx, credential, "VOLCENGINE_ACCESS_KEY_ID");
           const secretAccessKey = await resolveField(ctx, credential, "VOLCENGINE_SECRET_ACCESS_KEY");
+          const imageModel = await ctx.env("VOLCENGINE_IMAGE_MODEL");
+          const videoModel = await ctx.env("VOLCENGINE_VIDEO_MODEL");
+          const mediaDir = await ctx.env("VOLCENGINE_MEDIA_DIR");
           if (!key && !accessKeyId && !secretAccessKey) return undefined;
           return {
             auth: key ? { apiKey: key } : {},
             env: {
               ...(accessKeyId ? { VOLCENGINE_ACCESS_KEY_ID: accessKeyId } : {}),
               ...(secretAccessKey ? { VOLCENGINE_SECRET_ACCESS_KEY: secretAccessKey } : {}),
+              ...(imageModel ? { VOLCENGINE_IMAGE_MODEL: imageModel } : {}),
+              ...(videoModel ? { VOLCENGINE_VIDEO_MODEL: videoModel } : {}),
+              ...(mediaDir ? { VOLCENGINE_MEDIA_DIR: mediaDir } : {}),
             },
             source: credential ? "stored Volcengine credentials" : "Volcengine environment variables",
           };
@@ -155,4 +162,5 @@ export function createVolcengineProvider() {
 
 export default function volcengineArk(pi: ExtensionAPI): void {
   pi.registerProvider(createVolcengineProvider());
+  registerMediaTools(pi);
 }

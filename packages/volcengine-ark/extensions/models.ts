@@ -21,6 +21,15 @@ type JsonObject = Record<string, unknown>;
 export type VolcengineEndpointModel = Model<"openai-completions"> & {
   endpointId: string;
 };
+export type VolcengineModelKind = "chat" | "image" | "video" | "other";
+export interface VolcengineMediaModel {
+  inferenceId: string;
+  name: string;
+  kind: "image" | "video";
+  source: "built-in" | "custom";
+}
+
+let cachedMediaModels: readonly VolcengineMediaModel[] = [];
 
 type ArkControlAction = "ListEndpoints" | "InnerDescribeModelEndpoints";
 
@@ -186,16 +195,68 @@ function parsePage(
   };
 }
 
-function looksNonChat(item: JsonObject): boolean {
+export function classifyEndpoint(item: JsonObject): VolcengineModelKind {
   const modelType = string(pick(item, "EndpointModelType", "endpoint_model_type"))?.toLowerCase() ?? "";
   const reference = object(pick(item, "ModelReference", "model_reference"));
   const foundation = object(pick(reference, "FoundationModel", "foundation_model"));
   const haystack = [
     modelType,
+    string(pick(item, "ModelId", "model_id")),
     string(pick(foundation, "Name", "name")),
     string(pick(foundation, "ModelVersion", "model_version")),
+    string(pick(foundation, "TaskType", "task_type")),
   ].filter(Boolean).join(" ").toLowerCase();
-  return /(embedding|image|video|seedream|seedance|tts|speech|audio)/.test(haystack);
+  if (/(video|seedance)/.test(haystack)) return "video";
+  if (/(image|seedream|seededit)/.test(haystack)) return "image";
+  if (/(embedding|tts|speech|audio)/.test(haystack)) return "other";
+  return "chat";
+}
+
+function isAvailable(item: JsonObject, id: string | undefined, allowBatch = false): boolean {
+  const status = string(pick(item, "Status", "status"))?.toLowerCase();
+  return Boolean(
+    id
+    && (allowBatch || pick(item, "BatchOnly", "batch_only") !== true)
+    && (!status || ["running", "active", "ready", "inservice"].includes(status)),
+  );
+}
+
+function mediaDisplayName(item: JsonObject, fallback: string): string {
+  const reference = object(pick(item, "ModelReference", "model_reference"));
+  const foundation = object(pick(reference, "FoundationModel", "foundation_model"));
+  return string(pick(item, "Name", "name"))
+    || string(pick(foundation, "Name", "name"))
+    || fallback;
+}
+
+export function endpointToMediaModel(item: JsonObject): VolcengineMediaModel | undefined {
+  const inferenceId = string(pick(item, "Id", "id"));
+  const kind = classifyEndpoint(item);
+  if (!isAvailable(item, inferenceId) || (kind !== "image" && kind !== "video")) return undefined;
+  return {
+    inferenceId: inferenceId!,
+    name: mediaDisplayName(item, inferenceId!),
+    kind,
+    source: "custom",
+  };
+}
+
+export function builtInEndpointToMediaModel(item: JsonObject): VolcengineMediaModel | undefined {
+  const inferenceId = string(pick(item, "ModelId", "model_id"));
+  const kind = classifyEndpoint(item);
+  if (!isAvailable(item, inferenceId, true) || (kind !== "image" && kind !== "video")) {
+    return undefined;
+  }
+  return {
+    inferenceId: inferenceId!,
+    name: mediaDisplayName(item, inferenceId!),
+    kind,
+    source: "built-in",
+  };
+}
+
+export function getCachedMediaModels(): readonly VolcengineMediaModel[] {
+  return cachedMediaModels;
 }
 
 function modelProperties(item: JsonObject, fallback: string): Omit<
@@ -238,14 +299,7 @@ export function displayModelId(name: string, endpointId: string): string {
 
 export function endpointToModel(item: JsonObject): VolcengineEndpointModel | undefined {
   const endpointId = string(pick(item, "Id", "id"));
-  const status = string(pick(item, "Status", "status"))?.toLowerCase();
-  const batchOnly = pick(item, "BatchOnly", "batch_only") === true;
-  if (
-    !endpointId
-    || batchOnly
-    || (status && !["running", "active", "ready", "inservice"].includes(status))
-    || looksNonChat(item)
-  ) {
+  if (!endpointId || !isAvailable(item, endpointId) || classifyEndpoint(item) !== "chat") {
     return undefined;
   }
   const reference = object(pick(item, "ModelReference", "model_reference"));
@@ -267,12 +321,7 @@ export function builtInEndpointToModel(
   item: JsonObject,
 ): Model<"openai-completions"> | undefined {
   const modelId = string(pick(item, "ModelId", "model_id"));
-  const status = string(pick(item, "Status", "status"))?.toLowerCase();
-  if (
-    !modelId
-    || (status && !["running", "active", "ready", "inservice"].includes(status))
-    || looksNonChat(item)
-  ) {
+  if (!modelId || !isAvailable(item, modelId, true) || classifyEndpoint(item) !== "chat") {
     return undefined;
   }
   const reference = object(pick(item, "ModelReference", "model_reference"));
@@ -309,7 +358,7 @@ function endpointRejectionReason(item: JsonObject): string | undefined {
   if (status && !["running", "active", "ready", "inservice"].includes(status)) {
     return `status=${status}`;
   }
-  if (looksNonChat(item)) return "non-chat model";
+  if (classifyEndpoint(item) !== "chat") return `kind=${classifyEndpoint(item)}`;
 }
 
 function builtInRejectionReason(item: JsonObject): string | undefined {
@@ -318,7 +367,7 @@ function builtInRejectionReason(item: JsonObject): string | undefined {
   if (status && !["running", "active", "ready", "inservice"].includes(status)) {
     return `status=${status}`;
   }
-  if (looksNonChat(item)) return "non-chat model";
+  if (classifyEndpoint(item) !== "chat") return `kind=${classifyEndpoint(item)}`;
 }
 
 function parseProjects(payload: unknown): { names: string[]; count: number; total: number } {
@@ -503,8 +552,15 @@ export async function fetchEndpointModels(
     fetchImpl,
   );
   const builtInById = new Map<string, Model<"openai-completions">>();
+  const mediaById = new Map<string, VolcengineMediaModel>();
   const builtInRejections = new Map<string, number>();
   for (const item of builtInItems) {
+    const mediaModel = builtInEndpointToMediaModel(item);
+    if (mediaModel) {
+      mediaById.set(`${mediaModel.kind}:${mediaModel.inferenceId}`, mediaModel);
+      debug(`[volcengine] built-in media accepted ${endpointSummary(item)} kind=${mediaModel.kind} inferenceId=${JSON.stringify(mediaModel.inferenceId)}`);
+      continue;
+    }
     const model = builtInEndpointToModel(item);
     if (model) {
       builtInById.set(model.id, model);
@@ -518,6 +574,12 @@ export async function fetchEndpointModels(
   const customModels: VolcengineEndpointModel[] = [];
   const customRejections = new Map<string, number>();
   for (const item of customItems) {
+    const mediaModel = endpointToMediaModel(item);
+    if (mediaModel) {
+      mediaById.set(`${mediaModel.kind}:${mediaModel.inferenceId}`, mediaModel);
+      debug(`[volcengine] custom media accepted ${endpointSummary(item)} kind=${mediaModel.kind} inferenceId=${JSON.stringify(mediaModel.inferenceId)}`);
+      continue;
+    }
     const model = endpointToModel(item);
     if (model) {
       customModels.push(model);
@@ -533,8 +595,9 @@ export async function fetchEndpointModels(
     customModels,
     builtInModels.map((model) => model.id),
   );
+  cachedMediaModels = [...mediaById.values()];
   debug(
-    `[volcengine] refresh succeeded; builtInItems=${builtInItems.length} builtInAccepted=${builtInModels.length} builtInFiltered=${JSON.stringify(Object.fromEntries(builtInRejections))} customItems=${customItems.length} customAccepted=${uniqueCustomModels.length} customFiltered=${JSON.stringify(Object.fromEntries(customRejections))}`,
+    `[volcengine] refresh succeeded; builtInItems=${builtInItems.length} builtInAccepted=${builtInModels.length} builtInFiltered=${JSON.stringify(Object.fromEntries(builtInRejections))} customItems=${customItems.length} customAccepted=${uniqueCustomModels.length} customFiltered=${JSON.stringify(Object.fromEntries(customRejections))} media=${cachedMediaModels.length}`,
   );
   return [...builtInModels, ...uniqueCustomModels];
 }
