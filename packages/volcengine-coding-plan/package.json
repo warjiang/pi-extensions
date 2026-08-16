@@ -1,10 +1,19 @@
 {
   "name": "@pi-extensions/volcengine-coding-plan",
   "version": "0.1.0",
-  "private": true,
+  "description": "Pi extension for Volcengine Coding Plan",
   "type": "module",
   "keywords": ["pi-package", "volcengine", "coding-plan"],
   "files": ["extensions"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/warjiang/pi-extensions.git",
+    "directory": "packages/volcengine-coding-plan"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "pi": { "extensions": ["./extensions/index.ts"] },
   "scripts": {
     "dev": "pi -e .",

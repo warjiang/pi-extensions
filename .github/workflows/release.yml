@@ -1,0 +1,165 @@
+name: Release npm packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Package to publish
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - volcengine-ark
+          - volcengine-coding-plan
+          - volcengine-agent-plan
+      bump:
+        description: npm version bump
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - prepatch
+          - preminor
+          - premajor
+          - prerelease
+      prerelease_id:
+        description: Prerelease identifier used by pre* bumps
+        required: true
+        default: beta
+        type: string
+      dist_tag:
+        description: npm distribution tag
+        required: true
+        default: latest
+        type: choice
+        options:
+          - latest
+          - next
+          - beta
+          - alpha
+      dry_run:
+        description: Validate and pack only; do not publish or push versions
+        required: true
+        default: true
+        type: boolean
+
+concurrency:
+  group: npm-release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the default branch
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          if [ "$GITHUB_REF_NAME" != "$DEFAULT_BRANCH" ]; then
+            echo "Run this workflow from $DEFAULT_BRANCH, not $GITHUB_REF_NAME."
+            exit 1
+          fi
+
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js and npm registry
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org/
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type-check and test
+        run: |
+          pnpm check
+          pnpm test
+          pnpm release:verify-bump
+
+      - name: Bump selected package versions
+        run: >-
+          node scripts/release.mjs bump
+          --package "${{ inputs.package }}"
+          --bump "${{ inputs.bump }}"
+          --preid "${{ inputs.prerelease_id }}"
+
+      - name: Show release versions
+        run: node scripts/release.mjs versions --package "${{ inputs.package }}"
+
+      - name: Run npm publish dry-run
+        run: >-
+          node scripts/release.mjs publish
+          --package "${{ inputs.package }}"
+          --tag "${{ inputs.dist_tag }}"
+          --dry-run
+
+      - name: Require npm token
+        if: ${{ !inputs.dry_run }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "Repository secret NPM_TOKEN is not configured."
+            exit 1
+          fi
+
+      - name: Publish to npm
+        if: ${{ !inputs.dry_run }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: >-
+          node scripts/release.mjs publish
+          --package "${{ inputs.package }}"
+          --tag "${{ inputs.dist_tag }}"
+          --provenance
+
+      - name: Commit versions and create tags
+        if: ${{ !inputs.dry_run }}
+        env:
+          PACKAGE_SELECTION: ${{ inputs.package }}
+          BUMP_TYPE: ${{ inputs.bump }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/*/package.json
+          git commit -m "chore(release): publish $PACKAGE_SELECTION ($BUMP_TYPE)"
+          node scripts/release.mjs tags --package "$PACKAGE_SELECTION"
+
+      - name: Push release commit and tags atomically
+        if: ${{ !inputs.dry_run }}
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: git push --atomic origin "HEAD:$DEFAULT_BRANCH" --tags
+
+      - name: Write job summary
+        if: ${{ always() }}
+        env:
+          PACKAGE_SELECTION: ${{ inputs.package }}
+          IS_DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          {
+            echo "## npm release"
+            echo
+            echo "- Dry run: $IS_DRY_RUN"
+            echo "- Selection: $PACKAGE_SELECTION"
+            echo
+            echo '```text'
+            node scripts/release.mjs versions --package "$PACKAGE_SELECTION"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,10 +1,19 @@
 {
   "name": "@pi-extensions/volcengine-ark",
   "version": "0.1.0",
-  "private": true,
+  "description": "Pi extension for Volcengine Ark inference endpoints",
   "type": "module",
   "keywords": ["pi-package", "volcengine", "ark"],
   "files": ["extensions"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/warjiang/pi-extensions.git",
+    "directory": "packages/volcengine-ark"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "pi": { "extensions": ["./extensions/index.ts"] },
   "scripts": {
     "dev": "pi -e .",

@@ -122,3 +122,8 @@ Agent Plan 模型保留以下兼容配置：
 5. 临时撤销网络或使用无效凭据，确认刷新报错但之前缓存的目录仍然存在。
 
 不要把真实 API Key、Access Key 或 Secret Key 放进仓库、测试 fixture、命令输出或 issue。
+
+## npm 发布
+
+仓库包含自动 CI 和手动 npm 发布工作流。授权准备、dry-run 和版本 bump 操作见
+[`docs/npm-release.md`](./docs/npm-release.md)。

@@ -10,6 +10,8 @@
   "scripts": {
     "check": "pnpm -r typecheck",
     "test": "pnpm -r test",
+    "release:verify-bump": "node scripts/release.mjs verify-bump",
+    "release:dry-run": "node scripts/release.mjs publish --package all --tag latest --dry-run",
     "dev:ark": "pnpm --filter @pi-extensions/volcengine-ark dev",
     "dev:coding-plan": "pnpm --filter @pi-extensions/volcengine-coding-plan dev",
     "dev:agent-plan": "pnpm --filter @pi-extensions/volcengine-agent-plan dev"
