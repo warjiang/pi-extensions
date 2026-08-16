@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const registry = "https://registry.npmjs.org/";
 const packages = {
+  lark: "packages/lark",
   "volcengine-ark": "packages/volcengine-ark",
   "volcengine-coding-plan": "packages/volcengine-coding-plan",
   "volcengine-agent-plan": "packages/volcengine-agent-plan",

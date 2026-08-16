@@ -10,6 +10,7 @@ on:
         type: choice
         options:
           - all
+          - lark
           - volcengine-ark
           - volcengine-coding-plan
           - volcengine-agent-plan
