@@ -9,10 +9,13 @@ import {
   migrateCachedModels,
 } from "../extensions/index.ts";
 import {
+  builtInEndpointToModel,
   displayModelId,
   endpointToModel,
   fetchEndpointModels,
+  signInnerDescribeModelEndpoints,
   signListEndpoints,
+  signListProjects,
 } from "../extensions/models.ts";
 
 test("login stores API key and AK/SK in one credential", async () => {
@@ -34,16 +37,45 @@ test("login stores API key and AK/SK in one credential", async () => {
 
 test("signature is deterministic and does not contain secret", () => {
   const signed = signListEndpoints("{}", "AKID", "SECRET", new Date("2026-08-15T01:02:03Z"));
+  const builtInSigned = signInnerDescribeModelEndpoints(
+    "{}",
+    "AKID",
+    "SECRET",
+    new Date("2026-08-15T01:02:03Z"),
+  );
   assert.equal(signed.xDate, "20260815T010203Z");
   assert.equal(signed.xContentSha256.length, 64);
   assert.match(signed.authorization, /SignedHeaders=host;x-content-sha256;x-date/);
   assert.match(signed.authorization, /^HMAC-SHA256 Credential=AKID\//);
+  assert.notEqual(builtInSigned.authorization, signed.authorization);
+  assert.equal(signed.authorization.includes("SECRET"), false);
+});
+
+test("signs ListProjects with the official IAM host, region and headers", () => {
+  const signed = signListProjects(
+    "Action=ListProjects&Limit=100&Offset=0&Version=2021-08-01",
+    "AKID",
+    "SECRET",
+    new Date("2026-08-15T01:02:03Z"),
+  );
+  assert.equal(signed.xDate, "20260815T010203Z");
+  assert.match(signed.authorization, /AKID\/20260815\/cn-beijing\/iam\/request/);
+  assert.match(signed.authorization, /SignedHeaders=host;x-date/);
   assert.equal(signed.authorization.includes("SECRET"), false);
 });
 
 test("maps only running chat endpoints", () => {
   assert.equal(endpointToModel({ Id: "ep-bad", Status: "Stopped" }), undefined);
-  assert.equal(endpointToModel({ Id: "ep-img", Status: "Running", Name: "Seedream image" }), undefined);
+  assert.equal(endpointToModel({
+    Id: "ep-img",
+    Status: "Running",
+    ModelReference: { FoundationModel: { Name: "Seedream image" } },
+  }), undefined);
+  assert.equal(endpointToModel({ Id: "ep-batch", Status: "Running", BatchOnly: true }), undefined);
+  assert.equal(
+    endpointToModel({ Id: "ep-custom", Status: "Running", Name: "My image assistant" })?.id,
+    "my-image-assistant",
+  );
   const model = endpointToModel({
     Id: "ep-ok",
     Name: "DeepSeek endpoint",
@@ -56,6 +88,26 @@ test("maps only running chat endpoints", () => {
   assert.equal(model?.name, "DeepSeek endpoint");
   assert.equal(model?.reasoning, true);
   assert.equal(model?.contextWindow, 65536);
+});
+
+test("maps built-in endpoints with ModelId as the inference model", () => {
+  assert.equal(builtInEndpointToModel({
+    ModelId: "doubao-seedream-4-0",
+    Status: "Running",
+    ModelReference: { FoundationModel: { Name: "Seedream image" } },
+  }), undefined);
+  const model = builtInEndpointToModel({
+    Id: "builtin-endpoint-id",
+    ModelId: "deepseek-v4-flash-ga-260731",
+    Name: "DeepSeek V4 Flash",
+    Status: "Running",
+    ModelReference: { FoundationModel: { Name: "DeepSeek V4 Flash" } },
+  });
+  assert.equal(model?.id, "deepseek-v4-flash-ga-260731");
+  assert.equal(model?.name, "DeepSeek V4 Flash");
+  assert.equal(model?.reasoning, true);
+  assert.equal(endpointIdFromModel(model!), "deepseek-v4-flash-ga-260731");
+  assert.equal("endpointId" in model!, false);
 });
 
 test("uses a readable model id while preserving the upstream endpoint id", () => {
@@ -93,7 +145,7 @@ test("migrates legacy endpoint ids in the persisted catalog", () => {
 });
 
 test("paginates endpoints and treats empty list as valid", async () => {
-  let calls = 0;
+  let endpointCalls = 0;
   const models = await fetchEndpointModels({
     credential: {
       type: "api_key",
@@ -102,17 +154,94 @@ test("paginates endpoints and treats empty list as valid", async () => {
     allowNetwork: true,
     signal: new AbortController().signal,
     publish: async () => true,
-  }, async () => {
-    calls += 1;
+  }, async (input) => {
+    if (String(input).includes("ListProjects")) {
+      return new Response(JSON.stringify({
+        Result: { Projects: [{ ProjectName: "default" }], Total: 1 },
+      }));
+    }
+    if (String(input).includes("InnerDescribeModelEndpoints")) {
+      return new Response(JSON.stringify({
+        Result: { Items: [], TotalCount: 0 },
+      }));
+    }
+    endpointCalls += 1;
     return new Response(JSON.stringify({
       Result: {
-        Items: calls === 1 ? [{ Id: "ep-1", Status: "Running" }] : [],
+        Items: endpointCalls === 1 ? [{ Id: "ep-1", Status: "Running" }] : [],
         TotalCount: 2,
       },
     }));
   });
-  assert.equal(calls, 2);
+  assert.equal(endpointCalls, 2);
   assert.deepEqual(models.map((model) => model.id), ["ark-endpoint"]);
+});
+
+test("discovers projects and keeps separate endpoints for the same model", async () => {
+  const builtInRequests: Array<{ ProjectName?: string }> = [];
+  const customRequests: Array<{ ProjectName?: string }> = [];
+  const models = await fetchEndpointModels({
+    credential: {
+      type: "api_key",
+      env: { VOLCENGINE_ACCESS_KEY_ID: "ak", VOLCENGINE_SECRET_ACCESS_KEY: "sk" },
+    },
+    allowNetwork: true,
+    signal: new AbortController().signal,
+    publish: async () => true,
+  }, async (input, init) => {
+    if (String(input).includes("ListProjects")) {
+      return new Response(JSON.stringify({
+        Result: {
+          Projects: [
+            { ProjectName: "default", HasPermission: true },
+            { ProjectName: "project-b", HasPermission: true },
+            { ProjectName: "hidden", HasPermission: false },
+          ],
+          Total: 3,
+        },
+      }));
+    }
+    const body = JSON.parse(String(init?.body));
+    if (String(input).includes("InnerDescribeModelEndpoints")) {
+      builtInRequests.push(body);
+      return new Response(JSON.stringify({
+        Result: {
+          Items: [{
+            Id: "builtin-id",
+            ModelId: "deepseek-v4",
+            Name: "DeepSeek V4 built-in",
+            Status: "Running",
+          }],
+          TotalCount: 1,
+        },
+      }));
+    }
+    customRequests.push(body);
+    const projectName = customRequests.at(-1)?.ProjectName;
+    return new Response(JSON.stringify({
+      Result: {
+        Items: [{
+          Id: projectName === "default" ? "ep-default-aaa" : "ep-project-b-bbb",
+          Name: "DeepSeek V4",
+          Status: "Running",
+        }],
+        TotalCount: 1,
+      },
+    }));
+  });
+  assert.deepEqual(builtInRequests.map((request) => request.ProjectName), ["default", "project-b"]);
+  assert.deepEqual(customRequests.map((request) => request.ProjectName), ["default", "project-b"]);
+  assert.deepEqual(models.map((model) => model.id), [
+    "deepseek-v4",
+    "deepseek-v4-aaa",
+    "deepseek-v4-bbb",
+  ]);
+  assert.deepEqual(
+    models.slice(1).map(
+      (model) => (model as Model<"openai-completions"> & { endpointId: string }).endpointId,
+    ),
+    ["ep-default-aaa", "ep-project-b-bbb"],
+  );
 });
 
 test("auth errors are redacted", async () => {

@@ -26,7 +26,7 @@
     ]
   },
   "scripts": {
-    "dev": "pi -e .",
+    "dev": "node -e \"console.log('Volcengine Ark debug log: ' + require('node:path').join(require('node:os').tmpdir(), 'volcengine-ark-debug.log'))\" && VOLCENGINE_DEBUG=1 pi -e .",
     "typecheck": "tsc -p tsconfig.json",
     "test": "node --experimental-strip-types --test test/*.test.ts"
   },

@@ -1,15 +1,41 @@
 import { createHash, createHmac } from "node:crypto";
+import { appendFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import type { ApiKeyCredential, Model, RefreshModelsContext } from "@earendil-works/pi-ai";
 
 const CONTROL_URL = "https://ark.cn-beijing.volcengineapi.com/";
+const IAM_CONTROL_URL = "https://iam.volcengineapi.com/";
 const BASE_URL = "https://ark.cn-beijing.volces.com/api/v3";
 const ZERO_COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 const TIMEOUT_MS = 15_000;
+const CATALOG_IMPLEMENTATION = "built-in+custom-v1";
+const DEBUG_SETTING = process.env.VOLCENGINE_DEBUG;
+const DEBUG_LOG_PATH = DEBUG_SETTING
+  ? DEBUG_SETTING === "1"
+    ? join(tmpdir(), "volcengine-ark-debug.log")
+    : resolve(DEBUG_SETTING)
+  : undefined;
 
 type JsonObject = Record<string, unknown>;
 export type VolcengineEndpointModel = Model<"openai-completions"> & {
   endpointId: string;
 };
+
+type ArkControlAction = "ListEndpoints" | "InnerDescribeModelEndpoints";
+
+function debug(message: string): void {
+  if (!DEBUG_LOG_PATH) return;
+  try {
+    appendFileSync(DEBUG_LOG_PATH, `${new Date().toISOString()} ${message}\n`, "utf8");
+  } catch {
+    // Debug logging must never break model refresh.
+  }
+}
+
+debug(
+  `[volcengine] extension loaded; catalogImplementation=${CATALOG_IMPLEMENTATION} sources=${JSON.stringify(["InnerDescribeModelEndpoints", "ListEndpoints"])}`,
+);
 
 function object(value: unknown): JsonObject | undefined {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -37,7 +63,8 @@ function hmac(key: string | Buffer, value: string): Buffer {
   return createHmac("sha256", key).update(value).digest();
 }
 
-export function signListEndpoints(
+function signArkControlRequest(
+  action: ArkControlAction,
   body: string,
   accessKeyId: string,
   secretAccessKey: string,
@@ -45,7 +72,7 @@ export function signListEndpoints(
 ): { authorization: string; xDate: string; xContentSha256: string } {
   const xDate = date.toISOString().replace(/[:-]|\.\d{3}/g, "");
   const day = xDate.slice(0, 8);
-  const query = "Action=ListEndpoints&Version=2024-01-01";
+  const query = `Action=${action}&Version=2024-01-01`;
   const host = "ark.cn-beijing.volcengineapi.com";
   const xContentSha256 = sha256(body);
   const signedHeaders = "host;x-content-sha256;x-date";
@@ -68,6 +95,58 @@ export function signListEndpoints(
   };
 }
 
+export function signListEndpoints(
+  body: string,
+  accessKeyId: string,
+  secretAccessKey: string,
+  date = new Date(),
+): { authorization: string; xDate: string; xContentSha256: string } {
+  return signArkControlRequest("ListEndpoints", body, accessKeyId, secretAccessKey, date);
+}
+
+export function signInnerDescribeModelEndpoints(
+  body: string,
+  accessKeyId: string,
+  secretAccessKey: string,
+  date = new Date(),
+): { authorization: string; xDate: string; xContentSha256: string } {
+  return signArkControlRequest(
+    "InnerDescribeModelEndpoints",
+    body,
+    accessKeyId,
+    secretAccessKey,
+    date,
+  );
+}
+
+export function signListProjects(
+  query: string,
+  accessKeyId: string,
+  secretAccessKey: string,
+  date = new Date(),
+): { authorization: string; xDate: string } {
+  const xDate = date.toISOString().replace(/[:-]|\.\d{3}/g, "");
+  const day = xDate.slice(0, 8);
+  const host = "iam.volcengineapi.com";
+  const signedHeaders = "host;x-date";
+  const canonicalRequest = [
+    "GET",
+    "/",
+    query,
+    `host:${host}\nx-date:${xDate}\n`,
+    signedHeaders,
+    sha256(""),
+  ].join("\n");
+  const scope = `${day}/cn-beijing/iam/request`;
+  const stringToSign = `HMAC-SHA256\n${xDate}\n${scope}\n${sha256(canonicalRequest)}`;
+  const signingKey = hmac(hmac(hmac(hmac(secretAccessKey, day), "cn-beijing"), "iam"), "request");
+  const signature = createHmac("sha256", signingKey).update(stringToSign).digest("hex");
+  return {
+    xDate,
+    authorization: `HMAC-SHA256 Credential=${accessKeyId}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
+  };
+}
+
 function combinedSignal(parent: AbortSignal): { signal: AbortSignal; dispose(): void } {
   const timeout = AbortSignal.timeout(TIMEOUT_MS);
   const signal = AbortSignal.any([parent, timeout]);
@@ -86,11 +165,20 @@ function credentials(context: RefreshModelsContext): { accessKeyId: string; secr
   return { accessKeyId, secretAccessKey };
 }
 
-function parsePage(payload: unknown): { items: JsonObject[]; total: number } {
+function parsePage(
+  payload: unknown,
+  action: ArkControlAction,
+): { items: JsonObject[]; total: number } {
   const root = object(payload);
+  const metadata = object(pick(root, "ResponseMetadata", "response_metadata"));
+  const apiError = object(pick(metadata, "Error", "error"));
+  if (apiError) {
+    const code = string(pick(apiError, "Code", "code")) ?? "UnknownError";
+    throw new Error(`方舟 ${action} 请求失败（${code}）`);
+  }
   const result = object(pick(root, "Result", "result")) ?? root;
   const rawItems = pick(result, "Items", "items");
-  if (!Array.isArray(rawItems)) throw new Error("方舟 ListEndpoints 返回格式已变化");
+  if (!Array.isArray(rawItems)) throw new Error(`方舟 ${action} 返回格式已变化`);
   const items = rawItems.map(object).filter((item): item is JsonObject => Boolean(item));
   return {
     items,
@@ -104,43 +192,25 @@ function looksNonChat(item: JsonObject): boolean {
   const foundation = object(pick(reference, "FoundationModel", "foundation_model"));
   const haystack = [
     modelType,
-    string(pick(item, "Name", "name")),
     string(pick(foundation, "Name", "name")),
     string(pick(foundation, "ModelVersion", "model_version")),
   ].filter(Boolean).join(" ").toLowerCase();
   return /(embedding|image|video|seedream|seedance|tts|speech|audio)/.test(haystack);
 }
 
-export function displayModelId(name: string, endpointId: string): string {
-  const slug = (name === endpointId ? "ark-endpoint" : name)
-    .trim()
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}._-]+/gu, "-")
-    .replace(/^-+|-+$/g, "");
-  return slug || "ark-endpoint";
-}
-
-export function endpointToModel(item: JsonObject): VolcengineEndpointModel | undefined {
-  const endpointId = string(pick(item, "Id", "id"));
-  const status = string(pick(item, "Status", "status"))?.toLowerCase();
-  if (!endpointId || (status && !["running", "active", "ready", "inservice"].includes(status)) || looksNonChat(item)) {
-    return undefined;
-  }
+function modelProperties(item: JsonObject, fallback: string): Omit<
+  Model<"openai-completions">,
+  "id" | "name"
+> {
   const reference = object(pick(item, "ModelReference", "model_reference"));
   const foundation = object(pick(reference, "FoundationModel", "foundation_model"));
   const metadata = object(pick(item, "Metadata", "metadata", "ModelMetadata", "model_metadata"));
   const modelName = string(pick(foundation, "Name", "name"));
   const version = string(pick(foundation, "ModelVersion", "model_version"));
-  const haystack = `${modelName ?? ""} ${version ?? ""}`.toLowerCase();
+  const haystack = `${fallback} ${modelName ?? ""} ${version ?? ""}`.toLowerCase();
   const vision = /(vision|vl|doubao-seed|kimi-k2\.6|multimodal)/.test(haystack);
   const reasoning = /(deepseek|reason|thinking|r1|glm-5|kimi)/.test(haystack);
-  const displayName = string(pick(item, "Name", "name"))
-    || [modelName, version].filter(Boolean).join(" ")
-    || endpointId;
   return {
-    id: displayModelId(displayName, endpointId),
-    endpointId,
-    name: displayName,
     api: "openai-completions",
     provider: "volcengine",
     baseUrl: BASE_URL,
@@ -157,8 +227,181 @@ export function endpointToModel(item: JsonObject): VolcengineEndpointModel | und
   };
 }
 
-function uniqueModelIds(models: VolcengineEndpointModel[]): VolcengineEndpointModel[] {
-  const used = new Set<string>();
+export function displayModelId(name: string, endpointId: string): string {
+  const slug = (name === endpointId ? "ark-endpoint" : name)
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}._-]+/gu, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug || "ark-endpoint";
+}
+
+export function endpointToModel(item: JsonObject): VolcengineEndpointModel | undefined {
+  const endpointId = string(pick(item, "Id", "id"));
+  const status = string(pick(item, "Status", "status"))?.toLowerCase();
+  const batchOnly = pick(item, "BatchOnly", "batch_only") === true;
+  if (
+    !endpointId
+    || batchOnly
+    || (status && !["running", "active", "ready", "inservice"].includes(status))
+    || looksNonChat(item)
+  ) {
+    return undefined;
+  }
+  const reference = object(pick(item, "ModelReference", "model_reference"));
+  const foundation = object(pick(reference, "FoundationModel", "foundation_model"));
+  const modelName = string(pick(foundation, "Name", "name"));
+  const version = string(pick(foundation, "ModelVersion", "model_version"));
+  const displayName = string(pick(item, "Name", "name"))
+    || [modelName, version].filter(Boolean).join(" ")
+    || endpointId;
+  return {
+    id: displayModelId(displayName, endpointId),
+    endpointId,
+    name: displayName,
+    ...modelProperties(item, displayName),
+  };
+}
+
+export function builtInEndpointToModel(
+  item: JsonObject,
+): Model<"openai-completions"> | undefined {
+  const modelId = string(pick(item, "ModelId", "model_id"));
+  const status = string(pick(item, "Status", "status"))?.toLowerCase();
+  if (
+    !modelId
+    || (status && !["running", "active", "ready", "inservice"].includes(status))
+    || looksNonChat(item)
+  ) {
+    return undefined;
+  }
+  const reference = object(pick(item, "ModelReference", "model_reference"));
+  const foundation = object(pick(reference, "FoundationModel", "foundation_model"));
+  const displayName = string(pick(item, "Name", "name"))
+    || string(pick(foundation, "Name", "name"))
+    || modelId;
+  return {
+    id: modelId,
+    name: displayName,
+    ...modelProperties(item, modelId),
+  };
+}
+
+function endpointSummary(item: JsonObject): string {
+  const reference = object(pick(item, "ModelReference", "model_reference"));
+  const foundation = object(pick(reference, "FoundationModel", "foundation_model"));
+  return JSON.stringify({
+    id: string(pick(item, "Id", "id")),
+    modelId: string(pick(item, "ModelId", "model_id")),
+    name: string(pick(item, "Name", "name")),
+    status: string(pick(item, "Status", "status")),
+    endpointModelType: string(pick(item, "EndpointModelType", "endpoint_model_type")),
+    batchOnly: pick(item, "BatchOnly", "batch_only") === true,
+    foundationModel: string(pick(foundation, "Name", "name")),
+    modelVersion: string(pick(foundation, "ModelVersion", "model_version")),
+  });
+}
+
+function endpointRejectionReason(item: JsonObject): string | undefined {
+  if (!string(pick(item, "Id", "id"))) return "missing endpoint id";
+  if (pick(item, "BatchOnly", "batch_only") === true) return "batch-only endpoint";
+  const status = string(pick(item, "Status", "status"))?.toLowerCase();
+  if (status && !["running", "active", "ready", "inservice"].includes(status)) {
+    return `status=${status}`;
+  }
+  if (looksNonChat(item)) return "non-chat model";
+}
+
+function builtInRejectionReason(item: JsonObject): string | undefined {
+  if (!string(pick(item, "ModelId", "model_id"))) return "missing model id";
+  const status = string(pick(item, "Status", "status"))?.toLowerCase();
+  if (status && !["running", "active", "ready", "inservice"].includes(status)) {
+    return `status=${status}`;
+  }
+  if (looksNonChat(item)) return "non-chat model";
+}
+
+function parseProjects(payload: unknown): { names: string[]; count: number; total: number } {
+  const root = object(payload);
+  const metadata = object(pick(root, "ResponseMetadata", "response_metadata"));
+  const apiError = object(pick(metadata, "Error", "error"));
+  if (apiError) {
+    const code = string(pick(apiError, "Code", "code")) ?? "UnknownError";
+    throw new Error(`火山引擎项目列表请求失败（${code}）`);
+  }
+  const result = object(pick(root, "Result", "result")) ?? root;
+  const rawProjects = pick(result, "Projects", "projects");
+  if (!Array.isArray(rawProjects)) throw new Error("火山引擎 ListProjects 返回格式已变化");
+  const projects = rawProjects.map(object).filter((item): item is JsonObject => Boolean(item));
+  const names = projects
+    .filter((item) => pick(item, "HasPermission", "has_permission") !== false)
+    .map((item) => string(pick(item, "ProjectName", "project_name", "Name", "name")))
+    .filter((name): name is string => Boolean(name));
+  return {
+    names,
+    count: projects.length,
+    total: number(pick(result, "Total", "total", "TotalCount", "total_count")) ?? projects.length,
+  };
+}
+
+function redact(value: string, secrets: readonly string[]): string {
+  return secrets.reduce(
+    (redacted, secret) => secret ? redacted.split(secret).join("[REDACTED]") : redacted,
+    value,
+  );
+}
+
+async function responseText(response: Response, secrets: readonly string[]): Promise<string> {
+  try {
+    return redact(await response.clone().text(), secrets);
+  } catch (error) {
+    return `<读取响应失败: ${error instanceof Error ? error.message : String(error)}>`;
+  }
+}
+
+async function fetchProjectNames(
+  context: RefreshModelsContext,
+  accessKeyId: string,
+  secretAccessKey: string,
+  fetchImpl: typeof fetch,
+): Promise<string[]> {
+  const names = new Set<string>(["default"]);
+  for (let offset = 0; offset <= 100_000;) {
+    const query = `Action=ListProjects&Limit=100&Offset=${offset}&Version=2021-08-01`;
+    const signed = signListProjects(query, accessKeyId, secretAccessKey);
+    const requestUrl = `${IAM_CONTROL_URL}?${query}`;
+    debug(`[volcengine] GET ${requestUrl}`);
+    const response = await fetchImpl(requestUrl, {
+      method: "GET",
+      headers: {
+        "x-date": signed.xDate,
+        authorization: signed.authorization,
+      },
+      signal: combinedSignal(context.signal).signal,
+    });
+    if (DEBUG_LOG_PATH) {
+      debug(`[volcengine] ListProjects HTTP ${response.status} ${response.statusText}\n${await responseText(response, [accessKeyId, secretAccessKey])}`);
+    }
+    if (!response.ok) throw new Error(`火山引擎 ListProjects 请求失败（HTTP ${response.status}）`);
+    let payload: unknown;
+    try {
+      payload = await response.json();
+    } catch {
+      throw new Error("火山引擎 ListProjects 返回了畸形 JSON");
+    }
+    const parsed = parseProjects(payload);
+    parsed.names.forEach((name) => names.add(name));
+    offset += parsed.count;
+    if (offset >= parsed.total || parsed.count === 0) break;
+  }
+  return [...names];
+}
+
+function uniqueEndpointModelIds(
+  models: VolcengineEndpointModel[],
+  reservedIds: Iterable<string> = [],
+): VolcengineEndpointModel[] {
+  const used = new Set(reservedIds);
   return models.map((model) => {
     let id = model.id;
     if (used.has(id)) {
@@ -171,39 +414,127 @@ function uniqueModelIds(models: VolcengineEndpointModel[]): VolcengineEndpointMo
   });
 }
 
+async function fetchArkItems(
+  action: ArkControlAction,
+  projectNames: readonly string[],
+  context: RefreshModelsContext,
+  accessKeyId: string,
+  secretAccessKey: string,
+  fetchImpl: typeof fetch,
+): Promise<JsonObject[]> {
+  const all: JsonObject[] = [];
+  for (const projectName of projectNames) {
+    let projectCount = 0;
+    for (let page = 1; page <= 100; page += 1) {
+      const body = JSON.stringify({ PageNumber: page, PageSize: 100, ProjectName: projectName });
+      const signed = signArkControlRequest(action, body, accessKeyId, secretAccessKey);
+      const requestUrl = `${CONTROL_URL}?Action=${action}&Version=2024-01-01`;
+      debug(`[volcengine] ${action} POST ${requestUrl} body=${body}`);
+      let response: Response;
+      try {
+        response = await fetchImpl(requestUrl, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json; charset=utf-8",
+            "x-date": signed.xDate,
+            "x-content-sha256": signed.xContentSha256,
+            authorization: signed.authorization,
+          },
+          body,
+          signal: combinedSignal(context.signal).signal,
+        });
+      } catch (error) {
+        debug(`[volcengine] ${action} request error: ${error instanceof Error ? `${error.name}: ${error.message}` : String(error)}`);
+        throw error;
+      }
+      if (DEBUG_LOG_PATH) {
+        debug(`[volcengine] ${action} HTTP ${response.status} ${response.statusText}\n${await responseText(response, [accessKeyId, secretAccessKey])}`);
+      }
+      if (response.status === 401 || response.status === 403) {
+        throw new Error(`方舟 ${action} AK/SK 鉴权失败，请重新运行 /login。`);
+      }
+      if (!response.ok) throw new Error(`方舟 ${action} 请求失败（HTTP ${response.status}）`);
+      let payload: unknown;
+      try {
+        payload = await response.json();
+      } catch {
+        throw new Error(`方舟 ${action} 返回了畸形 JSON`);
+      }
+      const parsed = parsePage(payload, action);
+      all.push(...parsed.items);
+      projectCount += parsed.items.length;
+      debug(`[volcengine] ${action} project=${JSON.stringify(projectName)} page=${page} items=${parsed.items.length} projectItems=${projectCount} total=${parsed.total}`);
+      if (projectCount >= parsed.total || parsed.items.length === 0) break;
+    }
+  }
+  return all;
+}
+
 export async function fetchEndpointModels(
   context: RefreshModelsContext,
   fetchImpl: typeof fetch = fetch,
 ): Promise<readonly Model<"openai-completions">[]> {
   if (!context.allowNetwork) return [];
+  debug(
+    `[volcengine] refresh started; catalogImplementation=${CATALOG_IMPLEMENTATION} builtInSource=InnerDescribeModelEndpoints customSource=ListEndpoints log=${DEBUG_LOG_PATH}`,
+  );
   const { accessKeyId, secretAccessKey } = credentials(context);
-  const all: JsonObject[] = [];
-  for (let page = 1; page <= 100; page += 1) {
-    const body = JSON.stringify({ PageNumber: page, PageSize: 100 });
-    const signed = signListEndpoints(body, accessKeyId, secretAccessKey);
-    const request = combinedSignal(context.signal);
-    const response = await fetchImpl(`${CONTROL_URL}?Action=ListEndpoints&Version=2024-01-01`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json; charset=utf-8",
-        "x-date": signed.xDate,
-        "x-content-sha256": signed.xContentSha256,
-        authorization: signed.authorization,
-      },
-      body,
-      signal: request.signal,
-    });
-    if (response.status === 401 || response.status === 403) {
-      throw new Error("方舟 AK/SK 鉴权失败，请重新运行 /login。");
-    }
-    if (!response.ok) throw new Error(`方舟 ListEndpoints 请求失败（HTTP ${response.status}）`);
-    let payload: unknown;
-    try { payload = await response.json(); } catch { throw new Error("方舟 ListEndpoints 返回了畸形 JSON"); }
-    const parsed = parsePage(payload);
-    all.push(...parsed.items);
-    if (all.length >= parsed.total || parsed.items.length === 0) break;
+  let projectNames = ["default"];
+  try {
+    projectNames = await fetchProjectNames(context, accessKeyId, secretAccessKey, fetchImpl);
+  } catch (error) {
+    debug(`[volcengine] project discovery failed; using default only: ${error instanceof Error ? error.message : String(error)}`);
   }
-  const models = all.map(endpointToModel)
-    .filter((model): model is VolcengineEndpointModel => Boolean(model));
-  return uniqueModelIds(models);
+  debug(`[volcengine] projects=${JSON.stringify(projectNames)}`);
+  const builtInItems = await fetchArkItems(
+    "InnerDescribeModelEndpoints",
+    projectNames,
+    context,
+    accessKeyId,
+    secretAccessKey,
+    fetchImpl,
+  );
+  const customItems = await fetchArkItems(
+    "ListEndpoints",
+    projectNames,
+    context,
+    accessKeyId,
+    secretAccessKey,
+    fetchImpl,
+  );
+  const builtInById = new Map<string, Model<"openai-completions">>();
+  const builtInRejections = new Map<string, number>();
+  for (const item of builtInItems) {
+    const model = builtInEndpointToModel(item);
+    if (model) {
+      builtInById.set(model.id, model);
+      debug(`[volcengine] built-in accepted ${endpointSummary(item)} inferenceId=${JSON.stringify(model.id)}`);
+      continue;
+    }
+    const reason = builtInRejectionReason(item) ?? "unknown";
+    builtInRejections.set(reason, (builtInRejections.get(reason) ?? 0) + 1);
+    debug(`[volcengine] built-in filtered reason=${JSON.stringify(reason)} ${endpointSummary(item)}`);
+  }
+  const customModels: VolcengineEndpointModel[] = [];
+  const customRejections = new Map<string, number>();
+  for (const item of customItems) {
+    const model = endpointToModel(item);
+    if (model) {
+      customModels.push(model);
+      debug(`[volcengine] custom accepted ${endpointSummary(item)} displayId=${JSON.stringify(model.id)} inferenceId=${JSON.stringify(model.endpointId)}`);
+      continue;
+    }
+    const reason = endpointRejectionReason(item) ?? "unknown";
+    customRejections.set(reason, (customRejections.get(reason) ?? 0) + 1);
+    debug(`[volcengine] custom filtered reason=${JSON.stringify(reason)} ${endpointSummary(item)}`);
+  }
+  const builtInModels = [...builtInById.values()];
+  const uniqueCustomModels = uniqueEndpointModelIds(
+    customModels,
+    builtInModels.map((model) => model.id),
+  );
+  debug(
+    `[volcengine] refresh succeeded; builtInItems=${builtInItems.length} builtInAccepted=${builtInModels.length} builtInFiltered=${JSON.stringify(Object.fromEntries(builtInRejections))} customItems=${customItems.length} customAccepted=${uniqueCustomModels.length} customFiltered=${JSON.stringify(Object.fromEntries(customRejections))}`,
+  );
+  return [...builtInModels, ...uniqueCustomModels];
 }
