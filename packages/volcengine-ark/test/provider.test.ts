@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Model } from "@earendil-works/pi-ai";
-import {
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import volcengineArk, {
   createVolcengineProvider,
   endpointIdFromDisplayId,
   endpointIdFromModel,
@@ -10,9 +11,13 @@ import {
 } from "../extensions/index.ts";
 import {
   builtInEndpointToModel,
+  builtInEndpointToMediaModel,
+  classifyEndpoint,
   displayModelId,
+  endpointToMediaModel,
   endpointToModel,
   fetchEndpointModels,
+  getCachedMediaModels,
   signInnerDescribeModelEndpoints,
   signListEndpoints,
   signListProjects,
@@ -33,6 +38,26 @@ test("login stores API key and AK/SK in one credential", async () => {
     },
   });
   assert.equal(JSON.stringify(createVolcengineProvider()).includes("secret-key"), false);
+});
+
+test("registers chat provider, media tools and media commands in one extension", () => {
+  const tools: string[] = [];
+  const commands: string[] = [];
+  let providers = 0;
+  volcengineArk({
+    registerProvider() {
+      providers += 1;
+    },
+    registerTool(tool: { name: string }) {
+      tools.push(tool.name);
+    },
+    registerCommand(name: string) {
+      commands.push(name);
+    },
+  } as unknown as ExtensionAPI);
+  assert.equal(providers, 1);
+  assert.deepEqual(tools, ["generate_image", "generate_video", "get_video_task"]);
+  assert.deepEqual(commands, ["media-models", "media-refresh"]);
 });
 
 test("signature is deterministic and does not contain secret", () => {
@@ -88,6 +113,40 @@ test("maps only running chat endpoints", () => {
   assert.equal(model?.name, "DeepSeek endpoint");
   assert.equal(model?.reasoning, true);
   assert.equal(model?.contextWindow, 65536);
+});
+
+test("classifies and preserves image and video inference ids", () => {
+  const builtInImage = {
+    ModelId: "doubao-seedream-5-0-260128",
+    Name: "Seedream 5.0",
+    Status: "Running",
+    ModelReference: { FoundationModel: { Name: "Seedream image generation" } },
+  };
+  const customVideo = {
+    Id: "ep-video",
+    Name: "Product animation",
+    Status: "Running",
+    EndpointModelType: "video",
+  };
+  assert.equal(classifyEndpoint(builtInImage), "image");
+  assert.equal(classifyEndpoint(customVideo), "video");
+  assert.deepEqual(builtInEndpointToMediaModel(builtInImage), {
+    inferenceId: "doubao-seedream-5-0-260128",
+    name: "Seedream 5.0",
+    kind: "image",
+    source: "built-in",
+  });
+  assert.deepEqual(endpointToMediaModel(customVideo), {
+    inferenceId: "ep-video",
+    name: "Product animation",
+    kind: "video",
+    source: "custom",
+  });
+  assert.equal(endpointToModel(customVideo), undefined);
+  assert.equal(
+    classifyEndpoint({ Id: "ep-chat", Name: "My image assistant", Status: "Running" }),
+    "chat",
+  );
 });
 
 test("maps built-in endpoints with ModelId as the inference model", () => {
@@ -242,6 +301,70 @@ test("discovers projects and keeps separate endpoints for the same model", async
     ),
     ["ep-default-aaa", "ep-project-b-bbb"],
   );
+});
+
+test("keeps media models in a separate catalog while publishing chat models only", async () => {
+  const models = await fetchEndpointModels({
+    credential: {
+      type: "api_key",
+      env: { VOLCENGINE_ACCESS_KEY_ID: "ak", VOLCENGINE_SECRET_ACCESS_KEY: "sk" },
+    },
+    allowNetwork: true,
+    signal: new AbortController().signal,
+    publish: async () => true,
+  }, async (input) => {
+    if (String(input).includes("ListProjects")) {
+      return new Response(JSON.stringify({
+        Result: { Projects: [{ ProjectName: "default" }], Total: 1 },
+      }));
+    }
+    if (String(input).includes("InnerDescribeModelEndpoints")) {
+      return new Response(JSON.stringify({
+        Result: {
+          Items: [
+            {
+              ModelId: "chat-model",
+              Name: "Chat",
+              Status: "Running",
+            },
+            {
+              ModelId: "doubao-seedream-5-0-260128",
+              Name: "Seedream",
+              Status: "Running",
+              EndpointModelType: "image",
+            },
+          ],
+          TotalCount: 2,
+        },
+      }));
+    }
+    return new Response(JSON.stringify({
+      Result: {
+        Items: [{
+          Id: "ep-video",
+          Name: "Seedance endpoint",
+          Status: "Running",
+          EndpointModelType: "video",
+        }],
+        TotalCount: 1,
+      },
+    }));
+  });
+  assert.deepEqual(models.map((model) => model.id), ["chat-model"]);
+  assert.deepEqual(getCachedMediaModels(), [
+    {
+      inferenceId: "doubao-seedream-5-0-260128",
+      name: "Seedream",
+      kind: "image",
+      source: "built-in",
+    },
+    {
+      inferenceId: "ep-video",
+      name: "Seedance endpoint",
+      kind: "video",
+      source: "custom",
+    },
+  ]);
 });
 
 test("auth errors are redacted", async () => {

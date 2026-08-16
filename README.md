@@ -55,11 +55,32 @@ export VOLCENGINE_ACCESS_KEY_ID="..."
 export VOLCENGINE_SECRET_ACCESS_KEY="..."
 ```
 
-只有处于可调用状态的文本/Chat 接入点会注册为模型。Pi 中显示纯模型名称，例如
+只有处于可调用状态的文本/Chat 接入点会注册为聊天模型。图片和视频模型保留在同一
+Extension 的媒体目录中，并通过原生工具调用，不会被注册成 `openai-completions`。
+Pi 中显示纯聊天模型名称，例如
 `deepseek-v4-pro`；Endpoint ID 会保存在内部，并在实际推理时自动使用。若存在同名接入点，后出现的模型会添加短后缀以保持 ID 唯一。
 模型目录缺少能力元数据时，扩展使用保守默认值：128K context、16K output，并根据基础模型名称谨慎推断视觉与推理能力。
 
 首次启动时若没有 AK/SK，普通方舟目录为空，刷新结果会提示运行 `/login`。推理 API Key 与 AK/SK 可来自环境变量或 Pi 凭据存储，但不会写入日志或错误消息。
+
+普通方舟 Extension 同时注册以下媒体工具：
+
+- `generate_image`：生成或编辑图片，下载结果并以内联图片返回。
+- `generate_video`：创建视频任务、轮询进度并下载完成的视频。
+- `get_video_task`：恢复查询超时或中断的视频任务。
+
+使用 `/media-models` 查看媒体模型，使用 `/media-refresh` 强制刷新目录。多个同类模型并存时，
+通过工具的 `model` 参数指定，或设置默认模型：
+
+```bash
+export VOLCENGINE_IMAGE_MODEL="doubao-seedream-..."
+export VOLCENGINE_VIDEO_MODEL="doubao-seedance-..."
+# 默认保存到当前项目的 .pi/media
+export VOLCENGINE_MEDIA_DIR="./artifacts/media"
+```
+
+生成产物会立即下载，并附带 JSON 元数据。图片支持本地路径、HTTP(S)、TOS 和 data URL 参考图；
+视频支持首帧、尾帧、比例、分辨率、时长、随机种子、水印和音频生成参数。
 
 ## Coding Plan
 
