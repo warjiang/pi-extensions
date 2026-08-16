@@ -1,10 +1,16 @@
 {
   "name": "@ai.hermes/volcengine-agent-plan",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Pi extension for Volcengine Agent Plan",
   "type": "module",
-  "keywords": ["pi-package", "volcengine", "agent-plan"],
-  "files": ["extensions"],
+  "keywords": [
+    "pi-package",
+    "volcengine",
+    "agent-plan"
+  ],
+  "files": [
+    "extensions"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/warjiang/pi-extensions.git",
@@ -14,7 +20,11 @@
     "access": "public",
     "registry": "https://registry.npmjs.org/"
   },
-  "pi": { "extensions": ["./extensions/index.ts"] },
+  "pi": {
+    "extensions": [
+      "./extensions/index.ts"
+    ]
+  },
   "scripts": {
     "dev": "pi -e .",
     "typecheck": "tsc -p tsconfig.json",
