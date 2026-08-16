@@ -69,15 +69,17 @@ export VOLCENGINE_SECRET_ACCESS_KEY="..."
 export VOLCENGINE_CODING_PLAN_API_KEY="..."
 # 兼容旧变量名：
 export VOLCENGINE_PLAN_API_KEY="..."
+export VOLCENGINE_ACCESS_KEY_ID="..."
+export VOLCENGINE_SECRET_ACCESS_KEY="..."
 ```
 
-扩展优先请求：
+Coding Plan API Key 用于推理；AK/SK 用于签名调用官方模型目录：
 
 ```text
-https://ark.cn-beijing.volces.com/api/coding/v3/models
+POST https://ark.cn-beijing.volcengineapi.com/?Action=ListArkCodingPlanModel&Version=2024-01-01
 ```
 
-动态结果会过滤 embedding、图片、视频、音频等非 Chat 模型，并覆盖同 ID 的内置基线元数据。接口不可用、鉴权失败或响应格式变化时，Pi 保留最近一次成功目录；首次启动则使用内置基线。
+扩展只注册该接口实时返回的 `ModelID`，不包含硬编码模型列表。接口不可用、鉴权失败或响应格式变化时，Pi 保留最近一次成功目录；首次启动没有 AK/SK 或拉取失败时目录为空。
 
 ## Agent Plan
 
@@ -87,27 +89,29 @@ https://ark.cn-beijing.volces.com/api/coding/v3/models
 export VOLCENGINE_AGENT_PLAN_API_KEY="..."
 # 兼容变量：
 export ARK_API_KEY="..."
+export VOLCENGINE_ACCESS_KEY_ID="..."
+export VOLCENGINE_SECRET_ACCESS_KEY="..."
 ```
 
-扩展优先请求：
+Agent Plan API Key 用于推理；AK/SK 用于签名调用官方模型目录：
 
 ```text
-https://ark.cn-beijing.volces.com/api/plan/v3/models
+POST https://ark.cn-beijing.volcengineapi.com/?Action=ListArkAgentPlanModel&Version=2024-01-01
 ```
 
-Agent Plan 模型保留以下兼容配置：
+扩展只注册接口实时返回的 `ModelID`，不包含硬编码模型列表。Agent Plan 模型保留以下兼容配置：
 
 - 使用 `max_tokens`。
 - 不发送 `developer` role。
 - 使用 DeepSeek 风格 thinking。
-- 已验证模型支持 `xhigh -> max` reasoning level 映射。
+- DeepSeek 模型支持 `xhigh -> max` reasoning level 映射。
 
 ## 模型刷新与故障行为
 
 - 所有目录请求都有 15 秒超时，并合并 Pi 提供的 `AbortSignal`。
 - 401/403 会提示重新登录。
 - 网络错误、5xx、超时、取消、畸形 JSON 不会发布新目录，因此不会清空缓存。
-- 空数组是有效远端结果；Plan 包的静态基线仍可用。
+- 空数组是有效远端结果；两个 Plan 包都不提供静态模型基线。
 - Plan 订阅及无法确定价格的普通方舟模型，Pi `cost` 暂使用零值。该值不代表免费。
 - 当前仅支持中国北京地域与个人版 Coding/Agent Plan。
 

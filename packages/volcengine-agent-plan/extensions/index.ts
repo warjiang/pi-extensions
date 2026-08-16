@@ -2,10 +2,11 @@ import {
   createProvider,
   type ApiKeyCredential,
   type AuthInteraction,
+  type Model,
 } from "@earendil-works/pi-ai";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/compat";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { BASELINE_MODELS, fetchPlanModels } from "./models.ts";
+import { fetchPlanModels } from "./models.ts";
 
 export const PROVIDER_ID = "volcengine-agent-plan";
 export const BASE_URL = "https://ark.cn-beijing.volces.com/api/plan/v3";
@@ -16,7 +17,30 @@ export async function login(interaction: AuthInteraction): Promise<ApiKeyCredent
     message: "Volcengine Agent Plan API Key",
     placeholder: "ark-...",
   });
-  return { type: "api_key", key: key || undefined };
+  const accessKeyId = await interaction.prompt({
+    type: "secret",
+    message: "火山引擎 Access Key ID（用于拉取 Agent Plan 模型）",
+  });
+  const secretAccessKey = await interaction.prompt({
+    type: "secret",
+    message: "火山引擎 Secret Access Key（用于拉取 Agent Plan 模型）",
+  });
+  return {
+    type: "api_key",
+    key: key || undefined,
+    env: {
+      VOLCENGINE_ACCESS_KEY_ID: accessKeyId,
+      VOLCENGINE_SECRET_ACCESS_KEY: secretAccessKey,
+    },
+  };
+}
+
+async function resolveField(
+  ctx: { env(name: string): Promise<string | undefined> },
+  credential: ApiKeyCredential | undefined,
+  name: string,
+): Promise<string | undefined> {
+  return credential?.env?.[name] || (await ctx.env(name));
 }
 
 export function createAgentPlanProvider() {
@@ -26,19 +50,27 @@ export function createAgentPlanProvider() {
     baseUrl: BASE_URL,
     auth: {
       apiKey: {
-        name: "Volcengine Agent Plan API Key",
+        name: "Volcengine Agent Plan API Key + AK/SK",
         login,
         async resolve({ ctx, credential }) {
           const key = credential?.key
             || (await ctx.env("VOLCENGINE_AGENT_PLAN_API_KEY"))
             || (await ctx.env("ARK_API_KEY"));
-          return key
-            ? { auth: { apiKey: key }, source: credential ? "stored API key" : "Agent Plan environment variable" }
-            : undefined;
+          const accessKeyId = await resolveField(ctx, credential, "VOLCENGINE_ACCESS_KEY_ID");
+          const secretAccessKey = await resolveField(ctx, credential, "VOLCENGINE_SECRET_ACCESS_KEY");
+          if (!key && !accessKeyId && !secretAccessKey) return undefined;
+          return {
+            auth: key ? { apiKey: key } : {},
+            env: {
+              ...(accessKeyId ? { VOLCENGINE_ACCESS_KEY_ID: accessKeyId } : {}),
+              ...(secretAccessKey ? { VOLCENGINE_SECRET_ACCESS_KEY: secretAccessKey } : {}),
+            },
+            source: credential ? "stored Agent Plan credentials" : "Agent Plan environment variables",
+          };
         },
       },
     },
-    models: BASELINE_MODELS,
+    models: [] as Model<"openai-completions">[],
     fetchModels: (context) => fetchPlanModels(context),
     api: openAICompletionsApi(),
   });
