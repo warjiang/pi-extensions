@@ -1,5 +1,5 @@
 {
-  "name": "@pi-extensions/volcengine-agent-plan",
+  "name": "@ai.hermes/volcengine-agent-plan",
   "version": "0.1.0",
   "description": "Pi extension for Volcengine Agent Plan",
   "type": "module",

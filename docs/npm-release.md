@@ -8,12 +8,12 @@
 ## 首次发布前需要准备
 
 1. npm 账号开启双因素认证。
-2. 确认你拥有 npm scope `@pi-extensions`：
-   - npm 用户名为 `pi-extensions`；或
-   - 你是 npm organization `pi-extensions` 中具有发布权限的成员。
+2. 确认你拥有 npm scope `@ai.hermes`：
+   - npm 用户名为 `ai.hermes`；或
+   - 你是 npm organization `ai.hermes` 中具有发布权限的成员。
 3. 创建 npm granular access token：
-   - Packages and scopes：允许读写 `@pi-extensions`；
-   - Organizations：选择 `pi-extensions`（如果使用 organization）；
+   - Packages and scopes：允许读写 `@ai.hermes`；
+   - Organizations：选择 `ai.hermes`（如果使用 organization）；
    - Expiration：设置合适的短有效期；
    - 如果 npm 账号要求发布时使用 2FA，需要为自动化 token 启用允许发布的 2FA bypass 选项。
 4. 在 GitHub 仓库 `Settings → Secrets and variables → Actions` 新建 repository secret：
@@ -33,7 +33,7 @@
 4. Dist tag 选择 `latest`。
 5. 保持 `Dry run` 为选中状态。
 
-确认所有步骤通过后，再运行一次相同配置并取消选中 `Dry run`。首次正式发布会把三个包从 `0.1.0` bump 到 `0.1.1`，发布后提交三个 package.json，并创建格式为 `@pi-extensions/包名@版本` 的 Git tag。
+确认所有步骤通过后，再运行一次相同配置并取消选中 `Dry run`。首次正式发布会把三个包从 `0.1.0` bump 到 `0.1.1`，发布后提交三个 package.json，并创建格式为 `@ai.hermes/包名@版本` 的 Git tag。
 
 ## 后续发布
 

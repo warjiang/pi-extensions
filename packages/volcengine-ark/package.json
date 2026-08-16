@@ -1,5 +1,5 @@
 {
-  "name": "@pi-extensions/volcengine-ark",
+  "name": "@ai.hermes/volcengine-ark",
   "version": "0.1.0",
   "description": "Pi extension for Volcengine Ark inference endpoints",
   "type": "module",
