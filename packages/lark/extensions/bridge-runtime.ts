@@ -86,7 +86,15 @@ function statusCard(
   runId: string,
   title?: string,
 ): object {
-  const labels = { running: "运行中", stopped: "已停止", done: "完成", failed: "失败" };
+  // Visible unicode emoji in the header guarantees status feedback even when
+  // the bot can't add message reactions (e.g. permission scope missing).
+  const statusEmoji: Record<typeof status, string> = {
+    running: "🤔",
+    stopped: "🛑",
+    done: "✅",
+    failed: "💥",
+  };
+  const labels = { running: "思考中", stopped: "已停止", done: "完成", failed: "失败" };
   const elements: object[] = [{
     tag: "markdown",
     element_id: "bridge_output",
@@ -103,15 +111,15 @@ function statusCard(
       behaviors: [{ type: "callback", value: { action: "stop", key, runId } }],
     });
   }
-  const headerTitle = title?.trim() || `Pi · ${labels[status]}`;
+  const headerText = title?.trim() ? `${statusEmoji[status]} ${title.trim()}` : `${statusEmoji[status]} ${labels[status]}`;
   return {
     schema: "2.0",
     config: {
       streaming_mode: status === "running",
-      summary: { content: headerTitle },
+      summary: { content: headerText },
     },
     header: {
-      title: { tag: "plain_text", content: headerTitle },
+      title: { tag: "plain_text", content: headerText },
       template: status === "failed" ? "red" : status === "done" ? "green" : "blue",
     },
     body: { elements },
@@ -145,6 +153,15 @@ function fallbackTitle(input: string): string {
   if (!line) return "";
   return line.length > 24 ? `${line.slice(0, 24)}…` : line;
 }
+
+/** Feishu message-reaction emoji types per lifecycle stage. */
+const REACT_EMOJI = {
+  received: "Get", // 🉐 — message acknowledged, queued for the agent
+  done: "Done", // ✅ — finished successfully
+  stopped: "Shake", // 🤷 — aborted by the user
+  failed: "Cry", // 😭 — something went wrong
+} as const;
+const REACT_EMOJIS = new Set(Object.values(REACT_EMOJI));
 
 function extractSenderType(message: NormalizedMessage): string | undefined {
   const raw = message.raw as {
@@ -571,6 +588,11 @@ export class BridgeRuntime {
     this.activeRuns.set(key, active);
     let output = "";
     let unsubscribe: () => void = () => {};
+    // Acknowledge the message instantly with a 🉐 reaction so the user sees
+    // it was received, before the agent/card starts streaming.
+    void this.setReaction(message.messageId, "received");
+    let reactionStage: keyof typeof REACT_EMOJI | undefined = "received";
+    let reactionFinal = false;
     try {
       // Auto-generate a concise title from the user's question via a lightweight
       // model call; shows an instant fallback (first line of the input) while the
@@ -601,17 +623,27 @@ export class BridgeRuntime {
                 source: "extension",
               });
               settled = true;
-              await controller.update(statusCard(active.stopped ? "stopped" : "done", output, key, runId, title));
+              const stage = active.stopped ? "stopped" : "done";
+              await controller.update(statusCard(stage, output, key, runId, title));
+              if (reactionStage !== stage) {
+                reactionStage = stage;
+                if (!reactionFinal) { reactionFinal = true; void this.setReaction(message.messageId, stage); }
+              }
             } catch (error) {
               settled = true;
+              const stage = active.stopped ? "stopped" : "failed";
               const reason = this.redact(safeError(error));
               await controller.update(statusCard(
-                active.stopped ? "stopped" : "failed",
+                stage,
                 output || (active.stopped ? "任务已停止。" : `处理失败：${reason}`),
                 key,
                 runId,
                 title,
               ));
+              if (reactionStage !== stage) {
+                reactionStage = stage;
+                if (!reactionFinal) { reactionFinal = true; void this.setReaction(message.messageId, stage); }
+              }
             }
           },
         },
@@ -627,6 +659,7 @@ export class BridgeRuntime {
         ? `${output}\n\n---\n失败：${reason}`
         : `处理失败：${reason}`;
       await channel.send(message.chatId, { markdown: text }, { replyTo: message.messageId }).catch(() => undefined);
+      if (!reactionFinal) { reactionFinal = true; void this.setReaction(message.messageId, "failed"); }
     } finally {
       unsubscribe();
       if (this.activeRuns.get(key)?.runId === runId) this.activeRuns.delete(key);
@@ -663,6 +696,37 @@ export class BridgeRuntime {
     } catch (error) {
       await this.debug(`generate title failed: ${this.redact(safeError(error))}`);
       return "";
+    }
+  }
+
+  /**
+   * Best-effort: swap the emoji reaction on a message from the "received"
+   * emoji to the terminal-stage emoji. Never throws — reaction failures are
+   * logged and swallowed so the main reply flow is unaffected.
+   */
+  private async setReaction(messageId: string, stage: keyof typeof REACT_EMOJI): Promise<void> {
+    const channel = this.channel;
+    if (!channel) return;
+    const next = REACT_EMOJI[stage];
+    const prev = stage === "received" ? undefined : REACT_EMOJI.received;
+    try {
+      if (prev && prev !== next) await channel.removeReactionByEmoji(messageId, prev);
+    } catch (error) {
+      await this.debug(`remove reaction ${prev} failed: ${this.redact(safeError(error))}`);
+    }
+    try {
+      await channel.addReaction(messageId, next);
+    } catch (error) {
+      await this.debug(`add reaction ${next} failed: ${this.redact(safeError(error))}`);
+    }
+  }
+
+  /** Clear any bot-added lifecycle reactions on a message. */
+  private async clearReactions(messageId: string): Promise<void> {
+    const channel = this.channel;
+    if (!channel) return;
+    for (const emoji of REACT_EMOJIS) {
+      try { await channel.removeReactionByEmoji(messageId, emoji); } catch { /* ignore */ }
     }
   }
 
