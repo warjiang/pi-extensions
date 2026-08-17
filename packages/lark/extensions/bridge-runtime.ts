@@ -6,6 +6,7 @@ import {
   type AgentSession,
   type AgentSessionEvent,
 } from "@earendil-works/pi-coding-agent";
+import { type Context, contentText } from "@earendil-works/pi-ai";
 import {
   createLarkChannel,
   Domain,
@@ -83,6 +84,7 @@ function statusCard(
   body: string,
   key: string,
   runId: string,
+  title?: string,
 ): object {
   const labels = { running: "运行中", stopped: "已停止", done: "完成", failed: "失败" };
   const elements: object[] = [{
@@ -101,14 +103,15 @@ function statusCard(
       behaviors: [{ type: "callback", value: { action: "stop", key, runId } }],
     });
   }
+  const headerTitle = title?.trim() || `Pi · ${labels[status]}`;
   return {
     schema: "2.0",
     config: {
       streaming_mode: status === "running",
-      summary: { content: `Pi · ${labels[status]}` },
+      summary: { content: headerTitle },
     },
     header: {
-      title: { tag: "plain_text", content: `Pi · ${labels[status]}` },
+      title: { tag: "plain_text", content: headerTitle },
       template: status === "failed" ? "red" : status === "done" ? "green" : "blue",
     },
     body: { elements },
@@ -135,6 +138,12 @@ function choiceButton(label: string, value: Record<string, unknown>): object {
     value,
     behaviors: [{ type: "callback", value }],
   };
+}
+
+function fallbackTitle(input: string): string {
+  const line = input.trim().split(/\r?\n/)[0]?.replace(/[#>*`_~\-]/g, "").trim() ?? "";
+  if (!line) return "";
+  return line.length > 24 ? `${line.slice(0, 24)}…` : line;
 }
 
 function extractSenderType(message: NormalizedMessage): string | undefined {
@@ -563,15 +572,26 @@ export class BridgeRuntime {
     let output = "";
     let unsubscribe: () => void = () => {};
     try {
+      // Auto-generate a concise title from the user's question via a lightweight
+      // model call; shows an instant fallback (first line of the input) while the
+      // model is thinking, then refreshes the card header when the title arrives.
+      let title = fallbackTitle(input.text);
+      let settled = false;
       const result = await channel.stream(message.chatId, {
         card: {
-          initial: statusCard("running", "", key, runId),
+          initial: statusCard("running", "", key, runId, title),
           producer: async (controller) => {
             this.rememberBotMessage(controller.messageId);
+            void this.generateTitle(input.text, conversation.session).then((generated) => {
+              if (!generated || settled) return;
+              title = generated;
+              void controller.update(statusCard("running", output, key, runId, title))
+                .catch((error) => this.debug(`card title update failed: ${this.redact(safeError(error))}`));
+            });
             unsubscribe = conversation.session.subscribe((event: AgentSessionEvent) => {
               if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
                 output += event.assistantMessageEvent.delta;
-                void controller.update(statusCard("running", output, key, runId))
+                void controller.update(statusCard("running", output, key, runId, title))
                   .catch((error) => this.debug(`card update failed: ${this.redact(safeError(error))}`));
               }
             });
@@ -580,14 +600,17 @@ export class BridgeRuntime {
                 images: input.images,
                 source: "extension",
               });
-              await controller.update(statusCard(active.stopped ? "stopped" : "done", output, key, runId));
+              settled = true;
+              await controller.update(statusCard(active.stopped ? "stopped" : "done", output, key, runId, title));
             } catch (error) {
+              settled = true;
               const reason = this.redact(safeError(error));
               await controller.update(statusCard(
                 active.stopped ? "stopped" : "failed",
                 output || (active.stopped ? "任务已停止。" : `处理失败：${reason}`),
                 key,
                 runId,
+                title,
               ));
             }
           },
@@ -607,6 +630,39 @@ export class BridgeRuntime {
     } finally {
       unsubscribe();
       if (this.activeRuns.get(key)?.runId === runId) this.activeRuns.delete(key);
+    }
+  }
+
+  /**
+   * Generate a concise title for the card from the user's question via a
+   * lightweight (no-tools, non-streaming) model call. Returns "" on failure
+   * so callers can fall back to a static label.
+   */
+  private async generateTitle(input: string, session: AgentSession): Promise<string> {
+    const model = session.model;
+    if (!model) return "";
+    const trimmed = input.trim().replace(/\s+/g, " ");
+    if (!trimmed) return "";
+    const context: Context = {
+      systemPrompt:
+        "你是标题生成器。根据用户的提问生成一个简洁的中文标题：不超过 16 个字，不加标点符号，不加引号，只输出标题本身。",
+      messages: [{ role: "user", content: trimmed.slice(0, 800), timestamp: Date.now() }],
+    };
+    try {
+      const res = await session.modelRuntime.completeSimple(model, context);
+      let title = contentText(res.content).trim();
+      title = title
+        .replace(/^["'“”‘’（）()]+|["'“”‘’（）()]+$/g, "")
+        .replace(/[。.！!？?…]+$/g, "")
+        .trim();
+      const firstLine = title.split(/\r?\n/)[0]?.trim() ?? "";
+      if (!firstLine) return "";
+      const final = firstLine.slice(0, 40);
+      if (final) session.setSessionName(final);
+      return final;
+    } catch (error) {
+      await this.debug(`generate title failed: ${this.redact(safeError(error))}`);
+      return "";
     }
   }
 
