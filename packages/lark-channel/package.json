@@ -1,0 +1,46 @@
+{
+  "name": "@ai.hermes/lark-channel",
+  "version": "0.1.0",
+  "description": "Feishu/Lark channel for Pi built on @larksuite/channel — schema 2.0 cards (no legacy `tag: action`)",
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "lark",
+    "feishu",
+    "channel",
+    "card"
+  ],
+  "files": [
+    "src"
+  ],
+  "bin": {
+    "lark-channel": "./src/cli.ts"
+  },
+  "exports": {
+    ".": {
+      "import": "./src/index.ts"
+    },
+    "./card": {
+      "import": "./src/card.ts"
+    },
+    "./pi-rpc": {
+      "import": "./src/pi-rpc.ts"
+    }
+  },
+  "scripts": {
+    "dev": "node --experimental-strip-types src/cli.ts",
+    "start": "node --experimental-strip-types src/cli.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --experimental-strip-types --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@larksuite/channel": "^0.5.0",
+    "@larksuiteoapi/node-sdk": "^1.73.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

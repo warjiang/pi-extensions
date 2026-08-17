@@ -1,0 +1,25 @@
+{
+  "version": 3,
+  "tenantScopes": [
+    "application:application:self_manage",
+    "cardkit:card:write",
+    "im:chat:read",
+    "im:message.group_at_msg:readonly",
+    "im:message.p2p_msg:readonly",
+    "im:message.reactions:read",
+    "im:message.reactions:write_only",
+    "im:message:readonly",
+    "im:message:send_as_bot",
+    "im:resource"
+  ],
+  "openGroupScope": "im:message.group_msg",
+  "events": [
+    "im.chat.member.bot.added_v1",
+    "im.message.reaction.created_v1",
+    "im.message.reaction.deleted_v1",
+    "im.message.receive_v1"
+  ],
+  "callbacks": [
+    "card.action.trigger"
+  ]
+}

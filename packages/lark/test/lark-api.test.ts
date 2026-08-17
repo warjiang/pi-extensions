@@ -54,6 +54,15 @@ test("queries actual tenant and user scopes", async () => {
             { scope: "both", token_types: ["tenant", "user"] },
             { scope: "user:a", token_types: ["user"] },
           ],
+          event: {
+            subscription_type: "websocket",
+            subscribed_events: ["im.message.receive_v1"],
+          },
+          callback_info: {
+            callback_type: "websocket",
+            subscribed_callbacks: ["card.action.trigger"],
+          },
+          mobile_default_ability: "bot",
         },
       },
     }));
@@ -61,6 +70,11 @@ test("queries actual tenant and user scopes", async () => {
   assert.deepEqual(result, {
     tenant: ["both", "tenant:a"],
     user: ["both", "user:a"],
+    events: ["im.message.receive_v1"],
+    callbacks: ["card.action.trigger"],
+    subscriptionType: "websocket",
+    callbackType: "websocket",
+    botCapability: true,
   });
 });
 

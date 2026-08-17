@@ -2,10 +2,12 @@ import { Type } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createAppProvider, createUserProvider } from "./providers.ts";
 import { runLarkCli } from "./runner.ts";
+import { registerBridge } from "./bridge-command.ts";
 
 export default function larkExtension(pi: ExtensionAPI): void {
   pi.registerProvider(createAppProvider());
   pi.registerProvider(createUserProvider());
+  registerBridge(pi);
   pi.registerTool({
     name: "lark",
     label: "Lark",

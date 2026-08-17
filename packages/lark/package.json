@@ -34,18 +34,24 @@
   },
   "scripts": {
     "dev": "pi -e .",
+    "dev:bridge": "node --experimental-strip-types extensions/bridge-daemon.ts --daemon --foreground",
     "generate:skills": "node scripts/generate-skills.mjs --write",
     "update:snapshots": "node scripts/generate-skills.mjs --update-snapshot --write",
-    "check:sync": "node scripts/generate-skills.mjs --check",
+    "check:sync": "node scripts/generate-skills.mjs --check && node --experimental-strip-types scripts/check-bridge-snapshot.mjs",
     "typecheck": "tsc -p tsconfig.json",
     "test": "node --experimental-strip-types --test test/*.test.ts"
   },
   "dependencies": {
+    "@earendil-works/pi-tui": "0.84.2",
     "@larksuite/cli": "1.0.87",
-    "@larksuiteoapi/node-sdk": "1.73.0"
+    "@larksuiteoapi/node-sdk": "1.73.0",
+    "qrcode": "1.5.4"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
     "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@types/qrcode": "1.5.6"
   }
 }

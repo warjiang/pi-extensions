@@ -1,5 +1,7 @@
 import { accountsBaseUrl, openBaseUrl, type LarkBrand } from "./constants.ts";
 
+export const APPLICATION_SELF_MANAGE_SCOPE = "application:application:self_manage";
+
 interface LarkErrorEnvelope {
   code?: number;
   msg?: string;
@@ -19,6 +21,12 @@ async function readJson(response: Response): Promise<Record<string, unknown>> {
 function apiError(operation: string, response: Response, data: LarkErrorEnvelope): Error {
   const message = data.error_description || data.msg || data.error || `HTTP ${response.status}`;
   return new Error(`${operation}失败：${message}`);
+}
+
+export function isAppManagementPermissionError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes(APPLICATION_SELF_MANAGE_SCOPE) ||
+    message.includes("admin:app.info:readonly");
 }
 
 export interface TenantToken {
@@ -55,6 +63,11 @@ export async function exchangeTenantToken(
 export interface AppScopeInfo {
   tenant: string[];
   user: string[];
+  events?: string[];
+  callbacks?: string[];
+  subscriptionType?: string;
+  callbackType?: string;
+  botCapability?: boolean;
 }
 
 export interface BotInfo {
@@ -96,16 +109,39 @@ export async function queryAppScopes(
     data?: {
       app?: {
         scopes?: { scope?: string; token_types?: string[] }[];
+        event?: {
+          subscription_type?: string;
+          subscribed_events?: string[];
+        };
+        callback?: {
+          subscribed_callbacks?: string[];
+        };
+        callback_info?: {
+          callback_type?: string;
+          subscribed_callbacks?: string[];
+        };
+        mobile_default_ability?: string;
+        pc_default_ability?: string;
       };
     };
   };
   if (!response.ok || data.code !== 0) throw apiError("查询应用权限", response, data);
-  const scopes = data.data?.app?.scopes ?? [];
+  const app = data.data?.app;
+  const scopes = app?.scopes ?? [];
   return {
     tenant: [...new Set(scopes.filter((item) => item.token_types?.includes("tenant"))
       .map((item) => item.scope).filter((scope): scope is string => Boolean(scope)))].sort(),
     user: [...new Set(scopes.filter((item) => item.token_types?.includes("user"))
       .map((item) => item.scope).filter((scope): scope is string => Boolean(scope)))].sort(),
+    events: [...new Set(app?.event?.subscribed_events ?? [])].sort(),
+    callbacks: [...new Set([
+      ...(app?.callback?.subscribed_callbacks ?? []),
+      ...(app?.callback_info?.subscribed_callbacks ?? []),
+    ])].sort(),
+    subscriptionType: app?.event?.subscription_type,
+    callbackType: app?.callback_info?.callback_type,
+    botCapability: [app?.mobile_default_ability, app?.pc_default_ability]
+      .some((ability) => typeof ability === "string" && ability.toLowerCase().includes("bot")),
   };
 }
 

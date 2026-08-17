@@ -14,6 +14,7 @@
     "release:dry-run": "node scripts/release.mjs publish --package all --tag latest --dry-run",
     "dev:ark": "pnpm --filter @ai.hermes/volcengine-ark dev",
     "dev:lark": "pnpm --filter @ai.hermes/lark dev",
+    "dev:lark-channel": "pnpm --filter @ai.hermes/lark-channel dev",
     "dev:coding-plan": "pnpm --filter @ai.hermes/volcengine-coding-plan dev",
     "dev:agent-plan": "pnpm --filter @ai.hermes/volcengine-agent-plan dev"
   },
