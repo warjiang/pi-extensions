@@ -72,6 +72,63 @@ function hmac(key: string | Buffer, value: string): Buffer {
   return createHmac("sha256", key).update(value).digest();
 }
 
+export interface VolcengineRequestOptions {
+  url: string;
+  method: string;
+  service: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  region?: string;
+  body?: string;
+  headers?: HeadersInit;
+  signal: AbortSignal;
+  fetchImpl?: typeof fetch;
+}
+
+export async function volcengineRequest(options: VolcengineRequestOptions): Promise<Response> {
+  const url = new URL(options.url);
+  url.searchParams.sort();
+  const xDate = new Date().toISOString().replace(/[:-]|\.\d{3}/g, "");
+  const day = xDate.slice(0, 8);
+  const region = options.region ?? "cn-beijing";
+  const xContentSha256 = sha256(options.body ?? "");
+  const signPayload = options.body !== undefined;
+  const signedHeaders = signPayload
+    ? "host;x-content-sha256;x-date"
+    : "host;x-date";
+  const canonicalHeaders = signPayload
+    ? `host:${url.host}\nx-content-sha256:${xContentSha256}\nx-date:${xDate}\n`
+    : `host:${url.host}\nx-date:${xDate}\n`;
+  const canonicalRequest = [
+    options.method,
+    url.pathname,
+    url.search.slice(1),
+    canonicalHeaders,
+    signedHeaders,
+    xContentSha256,
+  ].join("\n");
+  const scope = `${day}/${region}/${options.service}/request`;
+  const stringToSign = `HMAC-SHA256\n${xDate}\n${scope}\n${sha256(canonicalRequest)}`;
+  const signingKey = hmac(
+    hmac(hmac(hmac(options.secretAccessKey, day), region), options.service),
+    "request",
+  );
+  const signature = createHmac("sha256", signingKey).update(stringToSign).digest("hex");
+  const headers = new Headers(options.headers);
+  headers.set("x-date", xDate);
+  if (signPayload) headers.set("x-content-sha256", xContentSha256);
+  headers.set(
+    "authorization",
+    `HMAC-SHA256 Credential=${options.accessKeyId}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
+  );
+  return (options.fetchImpl ?? fetch)(url, {
+    method: options.method,
+    headers,
+    body: options.body,
+    signal: combinedSignal(options.signal).signal,
+  });
+}
+
 function signArkControlRequest(
   action: ArkControlAction,
   body: string,
