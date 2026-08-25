@@ -18,6 +18,8 @@ export const ZERO_COST = {
 
 export const PAGE_SIZE = 100;
 export const REQUEST_TIMEOUT_MS = 15_000;
+export const DEFAULT_CONTEXT_WINDOW = 128_000;
+export const DEFAULT_MAX_TOKENS = 16_384;
 export const MEDIA_REQUEST_TIMEOUT_MS = 60_000;
 export const IMAGE_GENERATION_TIMEOUT_MS = 3 * 60_000;
 export const MAX_LOCAL_INPUT_BYTES = 20 * 1024 * 1024;

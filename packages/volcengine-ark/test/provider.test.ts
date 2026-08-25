@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Model } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { ARKClient, ListEndpointsCommand } from "@volcengine/ark";
+import {
+  ARKClient,
+  ListEndpointsCommand,
+  ListFoundationModelsCommand,
+} from "@volcengine/ark";
 import volcengineArk, {
   createVolcengineProvider,
   endpointIdFromDisplayId,
@@ -13,7 +17,6 @@ import volcengineArk, {
 import {
   builtInEndpointToModel,
   builtInEndpointToMediaModel,
-  classifyEndpoint,
   customEndpointToMediaModel,
   customEndpointToModel,
   displayModelId,
@@ -21,11 +24,27 @@ import {
   getCachedMediaModels,
   InnerDescribeModelEndpointsCommand,
 } from "../extensions/models.ts";
+import {
+  createFoundationModelIndex,
+  getModelManifest,
+  normalizeModelId,
+  resolveModelMetadata,
+} from "../extensions/model-manifest.ts";
 
-function mockArkClient(send: (command: object) => Promise<unknown>): ARKClient {
-  const client = new ARKClient({ accessKeyId: "ak", secretAccessKey: "sk" });
-  Object.defineProperty(client, "send", { value: send });
-  return client;
+async function withMockArkClient<T>(
+  send: (command: object) => Promise<unknown>,
+  run: () => Promise<T>,
+): Promise<T> {
+  const prototype = ARKClient.prototype as unknown as {
+    send: (command: object) => Promise<unknown>;
+  };
+  const originalSend = prototype.send;
+  prototype.send = send;
+  try {
+    return await run();
+  } finally {
+    prototype.send = originalSend;
+  }
 }
 
 test("login stores API key and AK/SK in one credential", async () => {
@@ -118,6 +137,10 @@ test("defines the unsupported built-in endpoint API as an SDK command", () => {
   });
   assert.equal(command.requestConfig?.serviceName, "ark");
   assert.equal(command.requestConfig?.method, "POST");
+  assert.equal(
+    ListFoundationModelsCommand.metaPath,
+    "/ListFoundationModels/2024-01-01/ark/post/application_json/",
+  );
 });
 
 test("maps only running chat endpoints", () => {
@@ -125,7 +148,7 @@ test("maps only running chat endpoints", () => {
   assert.equal(customEndpointToModel({
     Id: "ep-img",
     Status: "Running",
-    ModelReference: { FoundationModel: { Name: "Seedream image" } },
+    EndpointModelType: "image",
   }), undefined);
   assert.equal(
     customEndpointToModel({
@@ -139,21 +162,31 @@ test("maps only running chat endpoints", () => {
     Id: "ep-ok",
     Name: "DeepSeek endpoint",
     Status: "Running",
-    ModelReference: { FoundationModel: { Name: "DeepSeek R1", ModelVersion: "v1" } },
+    ModelReference: {
+      FoundationModel: { Name: "DeepSeek V3.2", ModelVersion: "251201" },
+    },
   });
   assert.equal(model?.id, "deepseek-endpoint");
   assert.equal(model?.endpointId, "ep-ok");
   assert.equal(model?.name, "DeepSeek endpoint");
   assert.equal(model?.reasoning, true);
-  assert.equal(model?.contextWindow, 128_000);
+  assert.equal(model?.contextWindow, 98_304);
+  assert.equal(model?.maxTokens, 32_768);
 });
 
 test("classifies and preserves image and video inference ids", () => {
+  const foundations = createFoundationModelIndex([{
+    Name: "Seedream",
+    FoundationModelTag: {
+      TaskTypes: ["Image Generation"],
+      Domains: ["Vision"],
+    },
+  }]);
   const builtInImage = {
     Id: "doubao-seedream-5-0-260128",
     Name: "Seedream 5.0",
     Status: "Running",
-    ModelReference: { FoundationModel: { Name: "Seedream image generation" } },
+    ModelReference: { FoundationModel: { Name: "Seedream" } },
   };
   const customVideo = {
     Id: "ep-video",
@@ -161,13 +194,13 @@ test("classifies and preserves image and video inference ids", () => {
     Status: "Running",
     EndpointModelType: "video",
   };
-  assert.equal(classifyEndpoint(builtInImage), "image");
-  assert.equal(classifyEndpoint(customVideo), "video");
-  assert.deepEqual(builtInEndpointToMediaModel(builtInImage), {
+  assert.deepEqual(builtInEndpointToMediaModel(builtInImage, foundations), {
     inferenceId: "doubao-seedream-5-0-260128",
     name: "Seedream 5.0",
     kind: "image",
     source: "built-in",
+    taskTypes: ["Image Generation"],
+    domains: ["Vision"],
   });
   assert.deepEqual(customEndpointToMediaModel(customVideo), {
     inferenceId: "ep-video",
@@ -176,29 +209,163 @@ test("classifies and preserves image and video inference ids", () => {
     source: "custom",
   });
   assert.equal(customEndpointToModel(customVideo), undefined);
-  assert.equal(
-    classifyEndpoint({ Id: "ep-chat", Name: "My image assistant", Status: "Running" }),
-    "chat",
-  );
+  assert.ok(customEndpointToModel({
+    Id: "ep-chat",
+    Name: "My image assistant",
+    Status: "Running",
+  }));
 });
 
 test("maps built-in endpoints with Id as the inference model", () => {
   assert.equal(builtInEndpointToModel({
     Id: "doubao-seedream-4-0",
     Status: "Running",
-    ModelReference: { FoundationModel: { Name: "Seedream image" } },
+    EndpointModelType: "image",
   }), undefined);
   const model = builtInEndpointToModel({
-    Id: "deepseek-v4-flash-ga-260731",
-    Name: "DeepSeek V4 Flash",
+    Id: "deepseek-v3-2-251201",
+    Name: "DeepSeek V3.2",
     Status: "Running",
-    ModelReference: { FoundationModel: { Name: "DeepSeek V4 Flash" } },
   });
-  assert.equal(model?.id, "deepseek-v4-flash-ga-260731");
-  assert.equal(model?.name, "DeepSeek V4 Flash");
+  assert.equal(model?.id, "deepseek-v3-2-251201");
+  assert.equal(model?.name, "DeepSeek V3.2");
   assert.equal(model?.reasoning, true);
-  assert.equal(endpointIdFromModel(model!), "deepseek-v4-flash-ga-260731");
+  assert.equal(endpointIdFromModel(model!), "deepseek-v3-2-251201");
   assert.equal("endpointId" in model!, false);
+});
+
+test("normalizes only provider prefixes, case and separators for manifest matching", () => {
+  assert.equal(
+    normalizeModelId("Volcengine/Doubao_Seed 2.0-Pro-260215"),
+    "doubao-seed-2-0-pro-260215",
+  );
+  assert.equal(
+    resolveModelMetadata({
+      Id: "VOLCENGINE/Doubao_Seed-2.0-Pro-260215",
+    }, new Map()).manifestId,
+    "doubao-seed-2-0-pro-260215",
+  );
+});
+
+test("matches manifest data through endpoint id, referenced version and primary version", () => {
+  const foundations = createFoundationModelIndex([{
+    Name: "Doubao Seed 2.0 Pro",
+    PrimaryVersion: "260215",
+    FoundationModelTag: { TaskTypes: ["Text Generation"] },
+  }]);
+  const byEndpoint = resolveModelMetadata({
+    Id: "doubao-seed-2-0-pro-260215",
+  }, foundations);
+  const byReferencedVersion = resolveModelMetadata({
+    Id: "ep-version",
+    ModelReference: {
+      FoundationModel: {
+        Name: "Doubao Seed 2.0 Pro",
+        ModelVersion: "260215",
+      },
+    },
+  }, foundations);
+  const byPrimaryVersion = resolveModelMetadata({
+    Id: "ep-primary",
+    ModelReference: {
+      FoundationModel: { Name: "Doubao Seed 2.0 Pro" },
+    },
+  }, foundations);
+
+  assert.equal(byEndpoint.manifestId, "doubao-seed-2-0-pro-260215");
+  assert.equal(byReferencedVersion.manifestId, "doubao-seed-2-0-pro-260215");
+  assert.equal(byPrimaryVersion.manifestId, "doubao-seed-2-0-pro-260215");
+});
+
+test("uses Ark tags for model kind and LiteLLM for chat capabilities and pricing", () => {
+  const foundations = createFoundationModelIndex([{
+    Name: "Doubao Seed 2.0 Pro",
+    PrimaryVersion: "260215",
+    FoundationModelTag: {
+      TaskTypes: ["Text Generation"],
+      Domains: ["Multimodal"],
+    },
+  }]);
+  const metadata = resolveModelMetadata({
+    Id: "ep-pro",
+    ModelReference: {
+      FoundationModel: { Name: "Doubao Seed 2.0 Pro" },
+    },
+  }, foundations);
+  const model = builtInEndpointToModel({
+    Id: "ep-pro",
+    Status: "Running",
+    ModelReference: {
+      FoundationModel: { Name: "Doubao Seed 2.0 Pro" },
+    },
+  }, foundations);
+
+  assert.equal(metadata.kind, "chat");
+  assert.deepEqual(metadata.taskTypes, ["Text Generation"]);
+  assert.equal(model?.contextWindow, 256_000);
+  assert.equal(model?.maxTokens, 128_000);
+  assert.equal(model?.reasoning, true);
+  assert.deepEqual(model?.input, ["text", "image"]);
+  assert.deepEqual(model?.cost, {
+    input: 0.46,
+    output: 2.3,
+    cacheRead: 0,
+    cacheWrite: 0,
+    tiers: [
+      {
+        inputTokensAbove: 32_000,
+        input: 0.7,
+        output: 3.5,
+        cacheRead: 0,
+        cacheWrite: 0,
+      },
+      {
+        inputTokensAbove: 128_000,
+        input: 1.4,
+        output: 7,
+        cacheRead: 0,
+        cacheWrite: 0,
+      },
+    ],
+  });
+});
+
+test("uses conservative defaults when LiteLLM has no matching model", () => {
+  const model = builtInEndpointToModel({
+    Id: "future-model",
+    Name: "Reasoning vision image assistant",
+    Status: "Running",
+  });
+  assert.equal(model?.reasoning, false);
+  assert.deepEqual(model?.input, ["text"]);
+  assert.equal(model?.contextWindow, 128_000);
+  assert.equal(model?.maxTokens, 16_384);
+  assert.deepEqual(model?.cost, {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+  });
+});
+
+test("does not publish manifest embedding models as chat models", () => {
+  const metadata = resolveModelMetadata({ Id: "doubao-embedding" }, new Map());
+  assert.equal(metadata.kind, "other");
+  assert.equal(builtInEndpointToModel({
+    Id: "doubao-embedding",
+    Status: "Running",
+  }), undefined);
+});
+
+test("ships a normalized, unique LiteLLM manifest snapshot", () => {
+  const snapshot = getModelManifest();
+  const keys = Object.keys(snapshot.models);
+  assert.equal(snapshot.source.repository, "BerriAI/litellm");
+  assert.match(snapshot.source.commit, /^[0-9a-f]{40}$/);
+  assert.ok(keys.length > 0);
+  assert.equal(new Set(keys).size, keys.length);
+  assert.deepEqual(keys, [...keys].sort());
+  assert.ok(keys.every((key) => key === normalizeModelId(key)));
 });
 
 test("uses a readable model id while preserving the upstream endpoint id", () => {
@@ -235,17 +402,34 @@ test("migrates legacy endpoint ids in the persisted model cache", () => {
   );
 });
 
-test("maps SDK endpoint responses and treats an empty built-in list as valid", async () => {
-  let customCalls = 0;
-  const client = mockArkClient(async (command) => {
+test("paginates foundation models during refresh", async () => {
+  const foundationPages: number[] = [];
+  await withMockArkClient(async (command) => {
     if (command instanceof InnerDescribeModelEndpointsCommand) {
       return { Result: { Items: [] } };
     }
-    assert.ok(command instanceof ListEndpointsCommand);
-    customCalls += 1;
-    return { Result: { Items: [{ Id: "ep-1", Status: "Running" }] } };
-  });
-  const models = await fetchEndpointModels({
+    if (command instanceof ListEndpointsCommand) {
+      return { Result: { Items: [] } };
+    }
+    assert.ok(command instanceof ListFoundationModelsCommand);
+    const pageNumber = command.input.PageNumber ?? 1;
+    foundationPages.push(pageNumber);
+    return pageNumber === 1
+      ? {
+          Result: {
+            Items: Array.from({ length: 100 }, (_, index) => ({
+              Name: `Foundation ${index}`,
+            })),
+            TotalCount: 101,
+          },
+        }
+      : {
+          Result: {
+            Items: [{ Name: "Foundation 100" }],
+            TotalCount: 101,
+          },
+        };
+  }, () => fetchEndpointModels({
     credential: {
       type: "api_key",
       env: { VOLCENGINE_ACCESS_KEY_ID: "ak", VOLCENGINE_SECRET_ACCESS_KEY: "sk" },
@@ -253,7 +437,51 @@ test("maps SDK endpoint responses and treats an empty built-in list as valid", a
     allowNetwork: true,
     signal: new AbortController().signal,
     publish: async () => true,
-  }, client);
+  }));
+  assert.deepEqual(foundationPages, [1, 2]);
+});
+
+test("fails refresh when foundation model discovery fails", async () => {
+  await assert.rejects(
+    withMockArkClient(async (command) => {
+      if (command instanceof ListFoundationModelsCommand) {
+        throw new Error("Foundation models unavailable");
+      }
+      return { Result: { Items: [] } };
+    }, () => fetchEndpointModels({
+      credential: {
+        type: "api_key",
+        env: { VOLCENGINE_ACCESS_KEY_ID: "ak", VOLCENGINE_SECRET_ACCESS_KEY: "sk" },
+      },
+      allowNetwork: true,
+      signal: new AbortController().signal,
+      publish: async () => true,
+    })),
+    /Foundation models unavailable/,
+  );
+});
+
+test("maps SDK endpoint responses and treats an empty built-in list as valid", async () => {
+  let customCalls = 0;
+  const models = await withMockArkClient(async (command) => {
+    if (command instanceof InnerDescribeModelEndpointsCommand) {
+      return { Result: { Items: [] } };
+    }
+    if (command instanceof ListFoundationModelsCommand) {
+      return { Result: { Items: [], TotalCount: 0 } };
+    }
+    assert.ok(command instanceof ListEndpointsCommand);
+    customCalls += 1;
+    return { Result: { Items: [{ Id: "ep-1", Status: "Running" }] } };
+  }, () => fetchEndpointModels({
+      credential: {
+        type: "api_key",
+        env: { VOLCENGINE_ACCESS_KEY_ID: "ak", VOLCENGINE_SECRET_ACCESS_KEY: "sk" },
+      },
+      allowNetwork: true,
+      signal: new AbortController().signal,
+      publish: async () => true,
+    }));
   assert.equal(customCalls, 1);
   assert.deepEqual(models.map((model) => model.id), ["ark-endpoint"]);
 });
@@ -261,7 +489,7 @@ test("maps SDK endpoint responses and treats an empty built-in list as valid", a
 test("keeps separate custom endpoints for the same model", async () => {
   let builtInCalls = 0;
   let customCalls = 0;
-  const client = mockArkClient(async (command) => {
+  const models = await withMockArkClient(async (command) => {
     if (command instanceof InnerDescribeModelEndpointsCommand) {
       builtInCalls += 1;
       return {
@@ -274,6 +502,9 @@ test("keeps separate custom endpoints for the same model", async () => {
         },
       };
     }
+    if (command instanceof ListFoundationModelsCommand) {
+      return { Result: { Items: [], TotalCount: 0 } };
+    }
     assert.ok(command instanceof ListEndpointsCommand);
     customCalls += 1;
     return {
@@ -284,16 +515,15 @@ test("keeps separate custom endpoints for the same model", async () => {
         ],
       },
     };
-  });
-  const models = await fetchEndpointModels({
-    credential: {
-      type: "api_key",
-      env: { VOLCENGINE_ACCESS_KEY_ID: "ak", VOLCENGINE_SECRET_ACCESS_KEY: "sk" },
-    },
-    allowNetwork: true,
-    signal: new AbortController().signal,
-    publish: async () => true,
-  }, client);
+  }, () => fetchEndpointModels({
+      credential: {
+        type: "api_key",
+        env: { VOLCENGINE_ACCESS_KEY_ID: "ak", VOLCENGINE_SECRET_ACCESS_KEY: "sk" },
+      },
+      allowNetwork: true,
+      signal: new AbortController().signal,
+      publish: async () => true,
+    }));
   assert.equal(builtInCalls, 1);
   assert.equal(customCalls, 1);
   assert.deepEqual(models.map((model) => model.id), [
@@ -310,7 +540,7 @@ test("keeps separate custom endpoints for the same model", async () => {
 });
 
 test("keeps media models separate while publishing chat models only", async () => {
-  const client = mockArkClient(async (command) => {
+  const models = await withMockArkClient(async (command) => {
     if (command instanceof InnerDescribeModelEndpointsCommand) {
       return {
         Result: {
@@ -320,9 +550,26 @@ test("keeps media models separate while publishing chat models only", async () =
               Id: "doubao-seedream-5-0-260128",
               Name: "Seedream",
               Status: "Running",
-              EndpointModelType: "image",
+              ModelReference: { FoundationModel: { Name: "Seedream" } },
             },
           ],
+        },
+      };
+    }
+    if (command instanceof ListFoundationModelsCommand) {
+      return {
+        Result: {
+          Items: [
+            {
+              Name: "Seedream",
+              FoundationModelTag: { TaskTypes: ["ImageGeneration"] },
+            },
+            {
+              Name: "Seedance",
+              FoundationModelTag: { TaskTypes: ["VideoGeneration"] },
+            },
+          ],
+          TotalCount: 2,
         },
       };
     }
@@ -333,20 +580,19 @@ test("keeps media models separate while publishing chat models only", async () =
           Id: "ep-video",
           Name: "Seedance endpoint",
           Status: "Running",
-          EndpointModelType: "video",
+          ModelReference: { FoundationModel: { Name: "Seedance" } },
         }],
       },
     };
-  });
-  const models = await fetchEndpointModels({
-    credential: {
-      type: "api_key",
-      env: { VOLCENGINE_ACCESS_KEY_ID: "ak", VOLCENGINE_SECRET_ACCESS_KEY: "sk" },
-    },
-    allowNetwork: true,
-    signal: new AbortController().signal,
-    publish: async () => true,
-  }, client);
+  }, () => fetchEndpointModels({
+      credential: {
+        type: "api_key",
+        env: { VOLCENGINE_ACCESS_KEY_ID: "ak", VOLCENGINE_SECRET_ACCESS_KEY: "sk" },
+      },
+      allowNetwork: true,
+      signal: new AbortController().signal,
+      publish: async () => true,
+    }));
   assert.deepEqual(models.map((model) => model.id), ["chat-model"]);
   assert.deepEqual(getCachedMediaModels(), [
     {
@@ -354,33 +600,34 @@ test("keeps media models separate while publishing chat models only", async () =
       name: "Seedream",
       kind: "image",
       source: "built-in",
+      taskTypes: ["ImageGeneration"],
     },
     {
       inferenceId: "ep-video",
       name: "Seedance endpoint",
       kind: "video",
       source: "custom",
+      taskTypes: ["VideoGeneration"],
     },
   ]);
 });
 
 test("auth errors are redacted", async () => {
-  const client = mockArkClient(async (command) => {
-    if (command instanceof InnerDescribeModelEndpointsCommand) {
-      throw new Error("AccessDenied");
-    }
-    return { Result: { Items: [] } };
-  });
   await assert.rejects(
-    fetchEndpointModels({
-      credential: {
-        type: "api_key",
-        env: { VOLCENGINE_ACCESS_KEY_ID: "ak", VOLCENGINE_SECRET_ACCESS_KEY: "super-secret" },
-      },
-      allowNetwork: true,
-      signal: new AbortController().signal,
-      publish: async () => true,
-    }, client),
+    withMockArkClient(async (command) => {
+      if (command instanceof InnerDescribeModelEndpointsCommand) {
+        throw new Error("AccessDenied");
+      }
+      return { Result: { Items: [], TotalCount: 0 } };
+    }, () => fetchEndpointModels({
+        credential: {
+          type: "api_key",
+          env: { VOLCENGINE_ACCESS_KEY_ID: "ak", VOLCENGINE_SECRET_ACCESS_KEY: "super-secret" },
+        },
+        allowNetwork: true,
+        signal: new AbortController().signal,
+        publish: async () => true,
+      })),
     (error: Error) => error.message.includes("super-secret") === false && /AccessDenied/.test(error.message),
   );
 });
@@ -389,19 +636,18 @@ test("preserves SDK cancellation errors", async () => {
   const controller = new AbortController();
   controller.abort();
   const sdkError = new Error("SDK cancellation wrapper");
-  const client = mockArkClient(async () => {
-    throw sdkError;
-  });
 
-  await assert.rejects(fetchEndpointModels({
-    credential: {
-      type: "api_key",
-      env: { VOLCENGINE_ACCESS_KEY_ID: "ak", VOLCENGINE_SECRET_ACCESS_KEY: "sk" },
-    },
-    allowNetwork: true,
-    signal: controller.signal,
-    publish: async () => true,
-  }, client), (error) => error === sdkError);
+  await assert.rejects(withMockArkClient(async () => {
+    throw sdkError;
+  }, () => fetchEndpointModels({
+      credential: {
+        type: "api_key",
+        env: { VOLCENGINE_ACCESS_KEY_ID: "ak", VOLCENGINE_SECRET_ACCESS_KEY: "sk" },
+      },
+      allowNetwork: true,
+      signal: controller.signal,
+      publish: async () => true,
+    })), (error) => error === sdkError);
 });
 
 test("restores cached models without network access", async () => {

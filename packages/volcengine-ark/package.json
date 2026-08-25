@@ -27,8 +27,9 @@
   },
   "scripts": {
     "dev": "node -e \"console.log('Volcengine Ark debug log: ' + require('node:path').join(require('node:os').tmpdir(), 'volcengine-ark-debug.log'))\" && VOLCENGINE_DEBUG=1 pi -e .",
+    "update:manifest": "node scripts/update-model-manifest.ts",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "node --experimental-strip-types --test test/*.test.ts"
+    "test": "node --test test/*.test.ts"
   },
   "dependencies": {
     "@volcengine/ark": "^1.0.3",

@@ -1,0 +1,179 @@
+{
+  "source": {
+    "repository": "BerriAI/litellm",
+    "ref": "litellm_internal_staging",
+    "commit": "31a67561ab23794bd9bdb72489b05f06e10b1c03",
+    "generatedAt": "2026-08-25T07:52:04.734Z"
+  },
+  "models": {
+    "deepseek-v3-2-251201": {
+      "mode": "chat",
+      "maxInputTokens": 98304,
+      "maxOutputTokens": 32768,
+      "maxTokens": 32768,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true,
+      "inputCostPerToken": 0,
+      "outputCostPerToken": 0
+    },
+    "doubao-embedding": {
+      "mode": "embedding",
+      "maxInputTokens": 4096,
+      "maxTokens": 4096,
+      "inputCostPerToken": 0,
+      "outputCostPerToken": 0
+    },
+    "doubao-embedding-large": {
+      "mode": "embedding",
+      "maxInputTokens": 4096,
+      "maxTokens": 4096,
+      "inputCostPerToken": 0,
+      "outputCostPerToken": 0
+    },
+    "doubao-embedding-large-text-240915": {
+      "mode": "embedding",
+      "maxInputTokens": 4096,
+      "maxTokens": 4096,
+      "inputCostPerToken": 0,
+      "outputCostPerToken": 0
+    },
+    "doubao-embedding-large-text-250515": {
+      "mode": "embedding",
+      "maxInputTokens": 4096,
+      "maxTokens": 4096,
+      "inputCostPerToken": 0,
+      "outputCostPerToken": 0
+    },
+    "doubao-embedding-text-240715": {
+      "mode": "embedding",
+      "maxInputTokens": 4096,
+      "maxTokens": 4096,
+      "inputCostPerToken": 0,
+      "outputCostPerToken": 0
+    },
+    "doubao-seed-2-0-code-preview-260215": {
+      "mode": "chat",
+      "maxInputTokens": 256000,
+      "maxOutputTokens": 128000,
+      "maxTokens": 128000,
+      "supportsVision": true,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true,
+      "tieredPricing": [
+        {
+          "inputTokensAbove": 0,
+          "inputCostPerToken": 4.6e-7,
+          "outputCostPerToken": 0.0000023
+        },
+        {
+          "inputTokensAbove": 32000,
+          "inputCostPerToken": 7e-7,
+          "outputCostPerToken": 0.0000035
+        },
+        {
+          "inputTokensAbove": 128000,
+          "inputCostPerToken": 0.0000014,
+          "outputCostPerToken": 0.000007
+        }
+      ]
+    },
+    "doubao-seed-2-0-lite-260215": {
+      "mode": "chat",
+      "maxInputTokens": 256000,
+      "maxOutputTokens": 128000,
+      "maxTokens": 128000,
+      "supportsVision": true,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true,
+      "tieredPricing": [
+        {
+          "inputTokensAbove": 0,
+          "inputCostPerToken": 8.7e-8,
+          "outputCostPerToken": 5.2e-7
+        },
+        {
+          "inputTokensAbove": 32000,
+          "inputCostPerToken": 1.3e-7,
+          "outputCostPerToken": 7.8e-7
+        },
+        {
+          "inputTokensAbove": 128000,
+          "inputCostPerToken": 2.6e-7,
+          "outputCostPerToken": 0.0000016
+        }
+      ]
+    },
+    "doubao-seed-2-0-mini-260215": {
+      "mode": "chat",
+      "maxInputTokens": 256000,
+      "maxOutputTokens": 128000,
+      "maxTokens": 128000,
+      "supportsVision": true,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true,
+      "tieredPricing": [
+        {
+          "inputTokensAbove": 0,
+          "inputCostPerToken": 2.9e-8,
+          "outputCostPerToken": 2.9e-7
+        },
+        {
+          "inputTokensAbove": 32000,
+          "inputCostPerToken": 5.8e-8,
+          "outputCostPerToken": 5.8e-7
+        },
+        {
+          "inputTokensAbove": 128000,
+          "inputCostPerToken": 1.2e-7,
+          "outputCostPerToken": 0.0000012
+        }
+      ]
+    },
+    "doubao-seed-2-0-pro-260215": {
+      "mode": "chat",
+      "maxInputTokens": 256000,
+      "maxOutputTokens": 128000,
+      "maxTokens": 128000,
+      "supportsVision": true,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true,
+      "tieredPricing": [
+        {
+          "inputTokensAbove": 0,
+          "inputCostPerToken": 4.6e-7,
+          "outputCostPerToken": 0.0000023
+        },
+        {
+          "inputTokensAbove": 32000,
+          "inputCostPerToken": 7e-7,
+          "outputCostPerToken": 0.0000035
+        },
+        {
+          "inputTokensAbove": 128000,
+          "inputCostPerToken": 0.0000014,
+          "outputCostPerToken": 0.000007
+        }
+      ]
+    },
+    "glm-4-7-251222": {
+      "mode": "chat",
+      "maxInputTokens": 204800,
+      "maxOutputTokens": 131072,
+      "maxTokens": 131072,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true,
+      "inputCostPerToken": 0,
+      "outputCostPerToken": 0
+    },
+    "kimi-k2-thinking-251104": {
+      "mode": "chat",
+      "maxInputTokens": 229376,
+      "maxOutputTokens": 32768,
+      "maxTokens": 32768,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true,
+      "inputCostPerToken": 0,
+      "outputCostPerToken": 0
+    }
+  }
+}

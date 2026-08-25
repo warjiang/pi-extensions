@@ -4,6 +4,8 @@ import {
   ARKClient,
   ListEndpointsCommand,
   type ListEndpointsCommandOutput,
+  ListFoundationModelsCommand,
+  type ListFoundationModelsCommandOutput,
 } from "@volcengine/ark";
 import {
   buildRequestConfigFromMetaPath,
@@ -13,12 +15,19 @@ import {
 import {
   BASE_URL,
   DEBUG_LOG_PATH,
+  DEFAULT_CONTEXT_WINDOW,
+  DEFAULT_MAX_TOKENS,
   ENV_NAMES,
   PAGE_SIZE,
   PROVIDER_ID,
   REQUEST_TIMEOUT_MS,
-  ZERO_COST,
 } from "./constants.ts";
+import {
+  createFoundationModelIndex,
+  type FoundationModelInfo,
+  modelCost,
+  resolveModelMetadata,
+} from "./model-manifest.ts";
 
 type InnerDescribeModelEndpointsRequest =
   ConstructorParameters<typeof ListEndpointsCommand>[0];
@@ -27,6 +36,11 @@ type InnerDescribeModelEndpointsResponse =
 type Endpoint = NonNullable<InnerDescribeModelEndpointsResponse["Items"]>[number];
 type InnerDescribeModelEndpointsCommandOutput =
   CommandOutput<InnerDescribeModelEndpointsResponse>;
+type ListFoundationModelsResponse =
+  ListFoundationModelsCommandOutput extends CommandOutput<infer Response> ? Response : never;
+type FoundationModel =
+  NonNullable<ListFoundationModelsResponse["Items"]>[number];
+type FoundationModelIndex = ReadonlyMap<string, readonly FoundationModelInfo[]>;
 
 export class InnerDescribeModelEndpointsCommand extends Command<
   InnerDescribeModelEndpointsRequest,
@@ -47,12 +61,14 @@ export class InnerDescribeModelEndpointsCommand extends Command<
 export type VolcengineEndpointModel = Model<"openai-completions"> & {
   endpointId: string;
 };
-export type VolcengineModelKind = "chat" | "image" | "video" | "other";
 export interface VolcengineMediaModel {
   inferenceId: string;
   name: string;
   kind: "image" | "video";
   source: "built-in" | "custom";
+  taskTypes?: readonly string[];
+  domains?: readonly string[];
+  manifestId?: string;
 }
 
 let cachedMediaModels: readonly VolcengineMediaModel[] = [];
@@ -66,19 +82,6 @@ function debug(message: string): void {
   }
 }
 
-export function classifyEndpoint(item: Endpoint): VolcengineModelKind {
-  const foundation = item.ModelReference?.FoundationModel;
-  const haystack = [
-    item.EndpointModelType,
-    foundation?.Name,
-    foundation?.ModelVersion,
-  ].filter(Boolean).join(" ").toLowerCase();
-  if (/(video|seedance)/.test(haystack)) return "video";
-  if (/(image|seedream|seededit)/.test(haystack)) return "image";
-  if (/(embedding|tts|speech|audio)/.test(haystack)) return "other";
-  return "chat";
-}
-
 function isAvailable(item: Endpoint, id: string | undefined): boolean {
   const status = item.Status?.toLowerCase();
   return Boolean(
@@ -87,40 +90,51 @@ function isAvailable(item: Endpoint, id: string | undefined): boolean {
   );
 }
 
-function mediaDisplayName(item: Endpoint, fallback: string): string {
+function displayName(
+  item: Endpoint,
+  fallback: string,
+  foundation?: FoundationModelInfo,
+): string {
   return item.Name
+    || foundation?.DisplayName
     || item.ModelReference?.FoundationModel?.Name
     || fallback;
 }
 
-export function customEndpointToMediaModel(item: Endpoint): VolcengineMediaModel | undefined {
+function endpointToMediaModel(
+  item: Endpoint,
+  source: VolcengineMediaModel["source"],
+  foundationsByName: FoundationModelIndex,
+): VolcengineMediaModel | undefined {
   const inferenceId = item.Id;
-  const kind = classifyEndpoint(item);
+  const metadata = resolveModelMetadata(item, foundationsByName);
+  const { kind } = metadata;
   if (!inferenceId || !isAvailable(item, inferenceId) || (kind !== "image" && kind !== "video")) {
     return undefined;
   }
   return {
     inferenceId,
-    name: mediaDisplayName(item, inferenceId),
+    name: displayName(item, inferenceId, metadata.foundation),
     kind,
-    source: "custom",
+    source,
+    ...(metadata.taskTypes.length ? { taskTypes: metadata.taskTypes } : {}),
+    ...(metadata.domains.length ? { domains: metadata.domains } : {}),
+    ...(metadata.manifestId ? { manifestId: metadata.manifestId } : {}),
   };
+}
+
+export function customEndpointToMediaModel(
+  item: Endpoint,
+  foundationsByName: FoundationModelIndex = new Map(),
+): VolcengineMediaModel | undefined {
+  return endpointToMediaModel(item, "custom", foundationsByName);
 }
 
 export function builtInEndpointToMediaModel(
   item: Endpoint,
+  foundationsByName: FoundationModelIndex = new Map(),
 ): VolcengineMediaModel | undefined {
-  const inferenceId = item.Id;
-  const kind = classifyEndpoint(item);
-  if (!inferenceId || !isAvailable(item, inferenceId) || (kind !== "image" && kind !== "video")) {
-    return undefined;
-  }
-  return {
-    inferenceId,
-    name: mediaDisplayName(item, inferenceId),
-    kind,
-    source: "built-in",
-  };
+  return endpointToMediaModel(item, "built-in", foundationsByName);
 }
 
 export function getCachedMediaModels(): readonly VolcengineMediaModel[] {
@@ -136,31 +150,32 @@ export function displayModelId(name: string, endpointId: string): string {
   return slug || "ark-endpoint";
 }
 
-function endpointToChatModel(item: Endpoint): Model<"openai-completions"> | undefined {
+function endpointToChatModel(
+  item: Endpoint,
+  foundationsByName: FoundationModelIndex,
+): Model<"openai-completions"> | undefined {
   const modelId = item.Id;
-  if (!modelId || !isAvailable(item, modelId) || classifyEndpoint(item) !== "chat") {
+  const metadata = resolveModelMetadata(item, foundationsByName);
+  for (const diagnostic of metadata.diagnostics) {
+    debug(`[volcengine] endpoint=${modelId ?? "unknown"} ${diagnostic}`);
+  }
+  if (!modelId || !isAvailable(item, modelId) || metadata.kind !== "chat") {
     return undefined;
   }
-  const foundation = item.ModelReference?.FoundationModel;
-  const displayName = item.Name
-    || [foundation?.Name, foundation?.ModelVersion].filter(Boolean).join(" ")
-    || modelId;
-  const haystack = `${displayName} ${foundation?.Name ?? ""} ${
-    foundation?.ModelVersion ?? ""
-  }`.toLowerCase();
-  const vision = /(vision|vl|doubao-seed|kimi-k2\.6|multimodal)/.test(haystack);
-  const reasoning = /(deepseek|reason|thinking|r1|glm-5|kimi)/.test(haystack);
+  const modelName = displayName(item, modelId, metadata.foundation);
+  const manifest = metadata.manifest;
+  const reasoning = manifest?.supportsReasoning ?? false;
   return {
     id: modelId,
-    name: displayName,
+    name: modelName,
     api: "openai-completions",
     provider: PROVIDER_ID,
     baseUrl: BASE_URL,
     reasoning,
-    input: vision ? ["text", "image"] : ["text"],
-    cost: { ...ZERO_COST },
-    contextWindow: 128_000,
-    maxTokens: 16_384,
+    input: manifest?.supportsVision ? ["text", "image"] : ["text"],
+    cost: modelCost(manifest),
+    contextWindow: manifest?.maxInputTokens ?? DEFAULT_CONTEXT_WINDOW,
+    maxTokens: manifest?.maxOutputTokens ?? manifest?.maxTokens ?? DEFAULT_MAX_TOKENS,
     compat: {
       supportsDeveloperRole: false,
       supportsReasoningEffort: reasoning,
@@ -169,8 +184,11 @@ function endpointToChatModel(item: Endpoint): Model<"openai-completions"> | unde
   };
 }
 
-export function customEndpointToModel(item: Endpoint): VolcengineEndpointModel | undefined {
-  const model = endpointToChatModel(item);
+export function customEndpointToModel(
+  item: Endpoint,
+  foundationsByName: FoundationModelIndex = new Map(),
+): VolcengineEndpointModel | undefined {
+  const model = endpointToChatModel(item, foundationsByName);
   if (!model) return undefined;
   return {
     ...model,
@@ -179,7 +197,12 @@ export function customEndpointToModel(item: Endpoint): VolcengineEndpointModel |
   };
 }
 
-export const builtInEndpointToModel = endpointToChatModel;
+export function builtInEndpointToModel(
+  item: Endpoint,
+  foundationsByName: FoundationModelIndex = new Map(),
+): Model<"openai-completions"> | undefined {
+  return endpointToChatModel(item, foundationsByName);
+}
 
 function uniqueEndpointModelIds(
   models: VolcengineEndpointModel[],
@@ -198,9 +221,34 @@ function uniqueEndpointModelIds(
   });
 }
 
+async function listFoundationModels(
+  client: ARKClient,
+  context: RefreshModelsContext,
+): Promise<FoundationModel[]> {
+  const models: FoundationModel[] = [];
+  for (let pageNumber = 1; ; pageNumber += 1) {
+    const response = await client.send(new ListFoundationModelsCommand({
+      PageNumber: pageNumber,
+      PageSize: PAGE_SIZE,
+    }), {
+      abortSignal: context.signal,
+      timeout: REQUEST_TIMEOUT_MS,
+    });
+    const items = response.Result?.Items ?? [];
+    models.push(...items);
+    const totalCount = response.Result?.TotalCount;
+    if (
+      items.length === 0
+      || (totalCount !== undefined && models.length >= totalCount)
+      || (totalCount === undefined && items.length < PAGE_SIZE)
+    ) {
+      return models;
+    }
+  }
+}
+
 export async function fetchEndpointModels(
   context: RefreshModelsContext,
-  injectedClient?: ARKClient,
 ): Promise<readonly Model<"openai-completions">[]> {
   if (!context.allowNetwork) return [];
   debug(`[volcengine] refresh started; log=${DEBUG_LOG_PATH}`);
@@ -212,12 +260,12 @@ export async function fetchEndpointModels(
   if (!accessKeyId || !secretAccessKey) {
     throw new Error("Access Key ID and Secret Access Key are required to fetch Ark endpoints; run /login.");
   }
-  const client = injectedClient ?? new ARKClient({
+  const client = new ARKClient({
     accessKeyId,
     secretAccessKey,
     region: "cn-beijing",
   });
-  const [builtInResponse, customResponse] = await Promise.all([
+  const [builtInResponse, customResponse, foundationModels] = await Promise.all([
     client.send(new InnerDescribeModelEndpointsCommand({
       PageSize: PAGE_SIZE,
     }), {
@@ -230,19 +278,21 @@ export async function fetchEndpointModels(
       abortSignal: context.signal,
       timeout: REQUEST_TIMEOUT_MS,
     }),
+    listFoundationModels(client, context),
   ]);
   const builtInItems = builtInResponse.Result?.Items ?? [];
   const customItems = customResponse.Result?.Items ?? [];
+  const foundationsByName = createFoundationModelIndex(foundationModels);
   const builtInModels = [
     ...new Map(
       builtInItems
-        .map(builtInEndpointToModel)
+        .map((item) => builtInEndpointToModel(item, foundationsByName))
         .filter((model): model is Model<"openai-completions"> => Boolean(model))
         .map((model) => [model.id, model]),
     ).values(),
   ];
   const customModels = customItems
-    .map(customEndpointToModel)
+    .map((item) => customEndpointToModel(item, foundationsByName))
     .filter((model): model is VolcengineEndpointModel => Boolean(model));
   const uniqueCustomModels = uniqueEndpointModelIds(
     customModels,
@@ -251,15 +301,15 @@ export async function fetchEndpointModels(
   cachedMediaModels = [
     ...new Map(
       [
-        ...builtInItems.map(builtInEndpointToMediaModel),
-        ...customItems.map(customEndpointToMediaModel),
+        ...builtInItems.map((item) => builtInEndpointToMediaModel(item, foundationsByName)),
+        ...customItems.map((item) => customEndpointToMediaModel(item, foundationsByName)),
       ]
         .filter((model): model is VolcengineMediaModel => Boolean(model))
         .map((model) => [`${model.kind}:${model.inferenceId}`, model]),
     ).values(),
   ];
   debug(
-    `[volcengine] refresh succeeded; builtIn=${builtInModels.length} custom=${uniqueCustomModels.length} media=${cachedMediaModels.length}`,
+    `[volcengine] refresh succeeded; foundations=${foundationModels.length} builtIn=${builtInModels.length} custom=${uniqueCustomModels.length} media=${cachedMediaModels.length}`,
   );
   return [...builtInModels, ...uniqueCustomModels];
 }
