@@ -8,7 +8,7 @@ import {
   TERMINAL_VIDEO_STATES,
 } from "./constants.ts";
 import {
-  getCachedMediaModels,
+  cachedMediaModels,
   type VolcengineMediaModel,
 } from "./models.ts";
 import {
@@ -37,7 +37,7 @@ async function refreshMediaModels(
   signal?: AbortSignal,
   force = false,
 ): Promise<readonly VolcengineMediaModel[]> {
-  if (!force && getCachedMediaModels().length > 0) return getCachedMediaModels();
+  if (!force && cachedMediaModels.length > 0) return cachedMediaModels;
   const result = await ctx.modelRegistry.refresh({
     allowNetwork: true,
     providers: [PROVIDER_ID],
@@ -46,7 +46,7 @@ async function refreshMediaModels(
   });
   const error = result.errors.get(PROVIDER_ID);
   if (error) throw error;
-  return getCachedMediaModels();
+  return cachedMediaModels;
 }
 
 async function createService(ctx: ExtensionContext): Promise<{

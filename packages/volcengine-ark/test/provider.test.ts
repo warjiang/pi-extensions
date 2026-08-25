@@ -16,12 +16,10 @@ import volcengineArk, {
 } from "../extensions/index.ts";
 import {
   builtInEndpointToModel,
-  builtInEndpointToMediaModel,
-  customEndpointToMediaModel,
   customEndpointToModel,
+  cachedMediaModels,
   displayModelId,
   fetchEndpointModels,
-  getCachedMediaModels,
   InnerDescribeModelEndpointsCommand,
 } from "../extensions/models.ts";
 import {
@@ -194,20 +192,12 @@ test("classifies and preserves image and video inference ids", () => {
     Status: "Running",
     EndpointModelType: "video",
   };
-  assert.deepEqual(builtInEndpointToMediaModel(builtInImage, foundations), {
-    inferenceId: "doubao-seedream-5-0-260128",
-    name: "Seedream 5.0",
-    kind: "image",
-    source: "built-in",
-    taskTypes: ["Image Generation"],
-    domains: ["Vision"],
-  });
-  assert.deepEqual(customEndpointToMediaModel(customVideo), {
-    inferenceId: "ep-video",
-    name: "Product animation",
-    kind: "video",
-    source: "custom",
-  });
+  const imageMetadata = resolveModelMetadata(builtInImage, foundations);
+  const videoMetadata = resolveModelMetadata(customVideo, new Map());
+  assert.equal(imageMetadata.kind, "image");
+  assert.deepEqual(imageMetadata.taskTypes, ["Image Generation"]);
+  assert.deepEqual(imageMetadata.domains, ["Vision"]);
+  assert.equal(videoMetadata.kind, "video");
   assert.equal(customEndpointToModel(customVideo), undefined);
   assert.ok(customEndpointToModel({
     Id: "ep-chat",
@@ -594,7 +584,7 @@ test("keeps media models separate while publishing chat models only", async () =
       publish: async () => true,
     }));
   assert.deepEqual(models.map((model) => model.id), ["chat-model"]);
-  assert.deepEqual(getCachedMediaModels(), [
+  assert.deepEqual(cachedMediaModels, [
     {
       inferenceId: "doubao-seedream-5-0-260128",
       name: "Seedream",

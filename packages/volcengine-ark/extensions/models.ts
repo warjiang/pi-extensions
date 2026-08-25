@@ -71,7 +71,7 @@ export interface VolcengineMediaModel {
   manifestId?: string;
 }
 
-let cachedMediaModels: readonly VolcengineMediaModel[] = [];
+export let cachedMediaModels: readonly VolcengineMediaModel[] = [];
 
 function debug(message: string): void {
   if (!DEBUG_LOG_PATH) return;
@@ -121,24 +121,6 @@ function endpointToMediaModel(
     ...(metadata.domains.length ? { domains: metadata.domains } : {}),
     ...(metadata.manifestId ? { manifestId: metadata.manifestId } : {}),
   };
-}
-
-export function customEndpointToMediaModel(
-  item: Endpoint,
-  foundationsByName: FoundationModelIndex = new Map(),
-): VolcengineMediaModel | undefined {
-  return endpointToMediaModel(item, "custom", foundationsByName);
-}
-
-export function builtInEndpointToMediaModel(
-  item: Endpoint,
-  foundationsByName: FoundationModelIndex = new Map(),
-): VolcengineMediaModel | undefined {
-  return endpointToMediaModel(item, "built-in", foundationsByName);
-}
-
-export function getCachedMediaModels(): readonly VolcengineMediaModel[] {
-  return cachedMediaModels;
 }
 
 export function displayModelId(name: string, endpointId: string): string {
@@ -204,6 +186,7 @@ export function builtInEndpointToModel(
   return endpointToChatModel(item, foundationsByName);
 }
 
+// Prevent custom endpoint display IDs from colliding with built-in models or one another.
 function uniqueEndpointModelIds(
   models: VolcengineEndpointModel[],
   reservedIds: Iterable<string> = [],
@@ -301,8 +284,12 @@ export async function fetchEndpointModels(
   cachedMediaModels = [
     ...new Map(
       [
-        ...builtInItems.map((item) => builtInEndpointToMediaModel(item, foundationsByName)),
-        ...customItems.map((item) => customEndpointToMediaModel(item, foundationsByName)),
+        ...builtInItems.map(
+          (item) => endpointToMediaModel(item, "built-in", foundationsByName),
+        ),
+        ...customItems.map(
+          (item) => endpointToMediaModel(item, "custom", foundationsByName),
+        ),
       ]
         .filter((model): model is VolcengineMediaModel => Boolean(model))
         .map((model) => [`${model.kind}:${model.inferenceId}`, model]),
