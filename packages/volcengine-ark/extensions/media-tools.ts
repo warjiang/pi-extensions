@@ -4,6 +4,10 @@ import type {
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import {
+  PROVIDER_ID,
+  TERMINAL_VIDEO_STATES,
+} from "./constants.ts";
+import {
   getCachedMediaModels,
   type VolcengineMediaModel,
 } from "./models.ts";
@@ -13,9 +17,11 @@ import {
   type VideoTask,
   VolcengineMediaService,
 } from "./media-service.ts";
-
-const PROVIDER_ID = "volcengine";
-const TERMINAL_VIDEO_STATES = new Set(["succeeded", "failed", "cancelled"]);
+import {
+  readProviderConfig,
+  updateProviderConfig,
+  type VolcengineProviderConfig,
+} from "./provider-config.ts";
 
 interface MediaToolDetails {
   kind: "image" | "video";
@@ -45,22 +51,22 @@ async function refreshMediaModels(
 
 async function createService(ctx: ExtensionContext): Promise<{
   service: VolcengineMediaService;
-  env: Record<string, string>;
+  config: VolcengineProviderConfig;
 }> {
   const auth = await ctx.modelRegistry.getProviderAuth(PROVIDER_ID);
   const apiKey = auth?.auth.apiKey;
   if (!apiKey) {
-    throw new Error("生图和生视频需要方舟 API Key；请先运行 /login 或设置 VOLCENGINE_API_KEY。");
+    throw new Error("An Ark API key is required for image and video generation; run /login.");
   }
-  const env = { ...process.env, ...auth.env } as Record<string, string>;
+  const config = await readProviderConfig();
   return {
     service: new VolcengineMediaService({
       apiKey,
       baseUrl: auth.auth.baseUrl,
       cwd: ctx.cwd,
-      outputDir: resolveMediaOutputDir(ctx.cwd, env.VOLCENGINE_MEDIA_DIR),
+      outputDir: resolveMediaOutputDir(ctx.cwd, config.mediaDir),
     }),
-    env,
+    config,
   };
 }
 
@@ -81,25 +87,61 @@ export function chooseMediaModel(
     if (selected) return selected;
     const otherKind = models.find((model) => model.inferenceId === requested);
     if (otherKind) {
-      throw new Error(`模型 ${requested} 是 ${otherKind.kind} 模型，不能用于 ${kind} 生成。`);
+      throw new Error(
+        `Model ${requested} is a ${otherKind.kind} model and cannot be used for ${kind} generation.`,
+      );
     }
     throw new Error(
-      `媒体目录中找不到 ${kind} 模型 ${requested}。可用模型：\n${candidatesText(candidates) || "（无）"}`,
+      `${kind} model ${requested} was not found. Available models:\n${
+        candidatesText(candidates) || "(none)"
+      }`,
     );
   }
   if (candidates.length === 1) return candidates[0]!;
   if (candidates.length === 0) {
-    throw new Error(`没有发现可用的 ${kind} 模型；请运行 /media-refresh 检查模型目录。`);
+    throw new Error(`No ${kind} models are available; run /media-refresh to refresh the model list.`);
   }
-  const envName = kind === "image" ? "VOLCENGINE_IMAGE_MODEL" : "VOLCENGINE_VIDEO_MODEL";
+  const command = kind === "image" ? "/media-image-model" : "/media-video-model";
   throw new Error(
-    `发现多个 ${kind} 模型，请显式传入 model 或设置 ${envName}：\n${candidatesText(candidates)}`,
+    `Multiple ${kind} models are available. Specify model or run ${command}:\n${
+      candidatesText(candidates)
+    }`,
   );
+}
+
+async function configureMediaModel(
+  ctx: ExtensionContext,
+  kind: "image" | "video",
+  args: string,
+): Promise<void> {
+  const key = kind === "image" ? "imageModel" : "videoModel";
+  if (args.trim() === "clear") {
+    await updateProviderConfig({ [key]: undefined });
+    ctx.ui.notify(`The default ${kind} model has been cleared.`, "info");
+    return;
+  }
+  const models = (await refreshMediaModels(ctx)).filter((model) => model.kind === kind);
+  if (models.length === 0) {
+    throw new Error(`No ${kind} models are available; run /media-refresh to refresh the model list.`);
+  }
+  let selected = args.trim();
+  if (!selected) {
+    const options = models.map((model) => `${model.name} (${model.inferenceId})`);
+    const choice = await ctx.ui.select(`Select the default ${kind} model`, options);
+    if (!choice) return;
+    selected = models[options.indexOf(choice)]?.inferenceId ?? "";
+  }
+  const model = models.find((candidate) => candidate.inferenceId === selected);
+  if (!model) {
+    throw new Error(`${kind} model ${selected || "(not selected)"} was not found.`);
+  }
+  await updateProviderConfig({ [key]: model.inferenceId });
+  ctx.ui.notify(`The default ${kind} model is now ${model.inferenceId}.`, "info");
 }
 
 function videoStatusText(task: VideoTask): string {
   const error = task.error?.message || task.error?.code;
-  return `视频任务 ${task.id}：${task.status}${error ? `（${error}）` : ""}`;
+  return `Video task ${task.id}: ${task.status}${error ? ` (${error})` : ""}`;
 }
 
 async function finishVideo(
@@ -108,8 +150,8 @@ async function finishVideo(
   signal?: AbortSignal,
 ): Promise<DownloadedVideoTask> {
   if (task.status === "failed" || task.status === "cancelled") {
-    const reason = task.error?.message || task.error?.code || "服务端未提供原因";
-    throw new Error(`视频任务 ${task.id} ${task.status}：${reason}`);
+    const reason = task.error?.message || task.error?.code || "No reason was provided by the server";
+    throw new Error(`Video task ${task.id} ${task.status}: ${reason}`);
   }
   return service.downloadVideoTask(task, signal);
 }
@@ -120,10 +162,10 @@ function videoResult(task: DownloadedVideoTask): {
 } {
   const lines = [
     videoStatusText(task),
-    task.localPath ? `本地文件：${task.localPath}` : undefined,
-    task.metadataPath ? `元数据：${task.metadataPath}` : undefined,
-    task.outputUrl && !task.localPath ? `临时 URL：${task.outputUrl}` : undefined,
-    task.downloadError ? `下载失败：${task.downloadError}` : undefined,
+    task.localPath ? `Local file: ${task.localPath}` : undefined,
+    task.metadataPath ? `Metadata: ${task.metadataPath}` : undefined,
+    task.outputUrl && !task.localPath ? `Temporary URL: ${task.outputUrl}` : undefined,
+    task.downloadError ? `Download failed: ${task.downloadError}` : undefined,
   ].filter(Boolean);
   return {
     content: [{ type: "text", text: lines.join("\n") }],
@@ -142,20 +184,20 @@ export function registerMediaTools(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "generate_image",
     label: "Generate Image",
-    description: "使用火山方舟 Seedream 图片模型生成或编辑图片，并将结果下载到本地。",
+    description: "Generate or edit images with Volcengine Ark Seedream models and save them locally.",
     promptSnippet: "Generate or edit images with Volcengine Ark media models",
     promptGuidelines: [
       "Use generate_image when the user asks to create or edit an image with Volcengine Ark.",
     ],
     parameters: Type.Object({
-      prompt: Type.String({ minLength: 1, description: "图片生成或编辑提示词" }),
-      model: Type.Optional(Type.String({ description: "媒体目录中的模型 ID 或 Endpoint ID" })),
+      prompt: Type.String({ minLength: 1, description: "Image generation or editing prompt" }),
+      model: Type.Optional(Type.String({ description: "Model ID or endpoint ID" })),
       reference_images: Type.Optional(Type.Array(Type.String(), {
         maxItems: 10,
-        description: "本地图片路径、HTTP(S) URL、TOS URL 或 data URL",
+        description: "Local image path, HTTP(S) URL, TOS URL, or data URL",
       })),
-      size: Type.Optional(Type.String({ description: "输出尺寸，例如 1920x1920 或 adaptive" })),
-      count: Type.Optional(Type.Integer({ minimum: 1, maximum: 15, description: "输出图片数量" })),
+      size: Type.Optional(Type.String({ description: "Output size, such as 1920x1920 or adaptive" })),
+      count: Type.Optional(Type.Integer({ minimum: 1, maximum: 15, description: "Number of images" })),
       seed: Type.Optional(Type.Integer()),
       watermark: Type.Optional(Type.Boolean()),
       output_format: Type.Optional(Type.Union([Type.Literal("jpeg"), Type.Literal("png")])),
@@ -163,14 +205,14 @@ export function registerMediaTools(pi: ExtensionAPI): void {
     executionMode: "parallel",
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
       onUpdate?.({
-        content: [{ type: "text", text: "正在加载方舟图片模型目录…" }],
+        content: [{ type: "text", text: "Loading Ark image models..." }],
         details: { kind: "image", status: "loading_models" },
       });
       const models = await refreshMediaModels(ctx, signal);
-      const { service, env } = await createService(ctx);
-      const model = chooseMediaModel(models, "image", params.model, env.VOLCENGINE_IMAGE_MODEL);
+      const { service, config } = await createService(ctx);
+      const model = chooseMediaModel(models, "image", params.model, config.imageModel);
       onUpdate?.({
-        content: [{ type: "text", text: `正在使用 ${model.inferenceId} 生成图片…` }],
+        content: [{ type: "text", text: `Generating images with ${model.inferenceId}...` }],
         details: { kind: "image", model: model.inferenceId, status: "generating" },
       });
       const result = await service.generateImages({
@@ -188,7 +230,9 @@ export function registerMediaTools(pi: ExtensionAPI): void {
         content: [
           {
             type: "text",
-            text: `已生成 ${paths.length} 张图片：\n${paths.join("\n")}\n元数据：${result.metadataPath}`,
+            text: `Generated ${paths.length} image(s):\n${paths.join("\n")}\nMetadata: ${
+              result.metadataPath
+            }`,
           },
           ...result.files.map((file) => ({
             type: "image" as const,
@@ -210,7 +254,7 @@ export function registerMediaTools(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "generate_video",
     label: "Generate Video",
-    description: "使用火山方舟 Seedance 视频模型创建任务、等待生成并下载视频。",
+    description: "Create, wait for, and download videos with Volcengine Ark Seedance models.",
     promptSnippet: "Generate videos with Volcengine Ark media models",
     promptGuidelines: [
       "Use generate_video when the user asks to create a video with Volcengine Ark.",
@@ -218,12 +262,12 @@ export function registerMediaTools(pi: ExtensionAPI): void {
     ],
     parameters: Type.Object({
       prompt: Type.String({ minLength: 1 }),
-      model: Type.Optional(Type.String({ description: "媒体目录中的模型 ID 或 Endpoint ID" })),
-      first_frame: Type.Optional(Type.String({ description: "首帧本地路径或 URL" })),
-      last_frame: Type.Optional(Type.String({ description: "尾帧本地路径或 URL" })),
-      ratio: Type.Optional(Type.String({ description: "例如 16:9、9:16 或 1:1" })),
-      resolution: Type.Optional(Type.String({ description: "例如 480p、720p 或 1080p" })),
-      duration: Type.Optional(Type.Integer({ minimum: 1, maximum: 60, description: "视频秒数" })),
+      model: Type.Optional(Type.String({ description: "Model ID or endpoint ID" })),
+      first_frame: Type.Optional(Type.String({ description: "Local path or URL for the first frame" })),
+      last_frame: Type.Optional(Type.String({ description: "Local path or URL for the last frame" })),
+      ratio: Type.Optional(Type.String({ description: "For example, 16:9, 9:16, or 1:1" })),
+      resolution: Type.Optional(Type.String({ description: "For example, 480p, 720p, or 1080p" })),
+      duration: Type.Optional(Type.Integer({ minimum: 1, maximum: 60, description: "Video duration in seconds" })),
       seed: Type.Optional(Type.Integer()),
       watermark: Type.Optional(Type.Boolean()),
       generate_audio: Type.Optional(Type.Boolean()),
@@ -231,10 +275,10 @@ export function registerMediaTools(pi: ExtensionAPI): void {
     executionMode: "parallel",
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
       const models = await refreshMediaModels(ctx, signal);
-      const { service, env } = await createService(ctx);
-      const model = chooseMediaModel(models, "video", params.model, env.VOLCENGINE_VIDEO_MODEL);
+      const { service, config } = await createService(ctx);
+      const model = chooseMediaModel(models, "video", params.model, config.videoModel);
       onUpdate?.({
-        content: [{ type: "text", text: `正在使用 ${model.inferenceId} 创建视频任务…` }],
+        content: [{ type: "text", text: `Creating a video task with ${model.inferenceId}...` }],
         details: { kind: "video", model: model.inferenceId, status: "creating" },
       });
       const created = await service.createVideoTask({
@@ -288,18 +332,18 @@ export function registerMediaTools(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "get_video_task",
     label: "Get Video Task",
-    description: "查询、恢复等待并下载已有的火山方舟视频生成任务。",
+    description: "Query, resume, and download an existing Volcengine Ark video task.",
     promptSnippet: "Query or resume a Volcengine Ark video task",
     promptGuidelines: [
       "Use get_video_task with the existing task ID after a video generation timeout or interruption.",
     ],
     parameters: Type.Object({
       task_id: Type.String({ minLength: 1 }),
-      wait: Type.Optional(Type.Boolean({ description: "是否继续等待任务完成" })),
+      wait: Type.Optional(Type.Boolean({ description: "Wait for the task to finish" })),
       timeout_seconds: Type.Optional(Type.Integer({
         minimum: 1,
         maximum: 600,
-        description: "继续等待的最长秒数，默认 600",
+        description: "Maximum number of seconds to wait; defaults to 600",
       })),
     }),
     executionMode: "parallel",
@@ -332,22 +376,21 @@ export function registerMediaTools(pi: ExtensionAPI): void {
   });
 
   pi.registerCommand("media-models", {
-    description: "查看火山方舟图片和视频模型",
+    description: "Show Volcengine Ark image and video models",
     handler: async (_args, ctx) => {
       try {
         const models = await refreshMediaModels(ctx);
-        const auth = await ctx.modelRegistry.getProviderAuth(PROVIDER_ID);
-        const imageDefault = auth?.env?.VOLCENGINE_IMAGE_MODEL || process.env.VOLCENGINE_IMAGE_MODEL;
-        const videoDefault = auth?.env?.VOLCENGINE_VIDEO_MODEL || process.env.VOLCENGINE_VIDEO_MODEL;
+        const config = await readProviderConfig();
         const lines = [
-          `图片默认：${imageDefault || "未设置"}`,
+          `Default image model: ${config.imageModel || "not set"}`,
           ...models.filter((model) => model.kind === "image").map(
             (model) => `  ${model.inferenceId} — ${model.name} [${model.source}]`,
           ),
-          `视频默认：${videoDefault || "未设置"}`,
+          `Default video model: ${config.videoModel || "not set"}`,
           ...models.filter((model) => model.kind === "video").map(
             (model) => `  ${model.inferenceId} — ${model.name} [${model.source}]`,
           ),
+          `Output directory: ${config.mediaDir || ".pi/media in the current project"}`,
         ];
         ctx.ui.notify(lines.join("\n"), "info");
       } catch (error) {
@@ -356,14 +399,68 @@ export function registerMediaTools(pi: ExtensionAPI): void {
     },
   });
 
+  pi.registerCommand("media-image-model", {
+    description: "Set the default Volcengine Ark image model; pass clear to reset it",
+    handler: async (args, ctx) => {
+      try {
+        await configureMediaModel(ctx, "image", args);
+      } catch (error) {
+        ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
+      }
+    },
+  });
+
+  pi.registerCommand("media-video-model", {
+    description: "Set the default Volcengine Ark video model; pass clear to reset it",
+    handler: async (args, ctx) => {
+      try {
+        await configureMediaModel(ctx, "video", args);
+      } catch (error) {
+        ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
+      }
+    },
+  });
+
+  pi.registerCommand("media-dir", {
+    description: "Set the media output directory; pass clear to restore the default",
+    handler: async (args, ctx) => {
+      try {
+        let input = args.trim();
+        if (!input) {
+          const entered = await ctx.ui.input(
+            "Set the media output directory",
+            "Enter a path relative to the current project or an absolute path; enter clear to reset",
+          );
+          if (entered === undefined) return;
+          input = entered.trim();
+        }
+        if (!input) return;
+        await updateProviderConfig({
+          mediaDir: input === "clear" ? undefined : input,
+        });
+        ctx.ui.notify(
+          input === "clear"
+            ? "The media output directory has been reset to .pi/media in the current project."
+            : `The media output directory is now ${input}.`,
+          "info",
+        );
+      } catch (error) {
+        ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
+      }
+    },
+  });
+
   pi.registerCommand("media-refresh", {
-    description: "重新拉取火山方舟媒体模型目录",
+    description: "Refresh Volcengine Ark media models",
     handler: async (_args, ctx) => {
       try {
         const models = await refreshMediaModels(ctx, undefined, true);
         const images = models.filter((model) => model.kind === "image").length;
         const videos = models.filter((model) => model.kind === "video").length;
-        ctx.ui.notify(`媒体模型目录已刷新：${images} 个图片模型，${videos} 个视频模型。`, "info");
+        ctx.ui.notify(
+          `Media models refreshed: ${images} image model(s), ${videos} video model(s).`,
+          "info",
+        );
       } catch (error) {
         ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
       }

@@ -9,11 +9,16 @@ import {
 } from "@earendil-works/pi-ai";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/compat";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import {
+  BASE_URL,
+  ENV_NAMES,
+  PROVIDER_ID,
+  PROVIDER_NAME,
+} from "./constants.ts";
 import { registerMediaTools } from "./media-tools.ts";
 import { displayModelId, fetchEndpointModels } from "./models.ts";
 
-export const PROVIDER_ID = "volcengine";
-export const BASE_URL = "https://ark.cn-beijing.volces.com/api/v3";
+export { BASE_URL, PROVIDER_ID } from "./constants.ts";
 
 export function endpointIdFromDisplayId(id: string): string {
   const separator = id.lastIndexOf("@");
@@ -94,47 +99,33 @@ export async function login(interaction: AuthInteraction): Promise<ApiKeyCredent
     type: "api_key",
     key: key || undefined,
     env: {
-      VOLCENGINE_ACCESS_KEY_ID: accessKeyId,
-      VOLCENGINE_SECRET_ACCESS_KEY: secretAccessKey,
+      ...(accessKeyId ? { [ENV_NAMES.accessKeyId]: accessKeyId } : {}),
+      ...(secretAccessKey ? { [ENV_NAMES.secretAccessKey]: secretAccessKey } : {}),
     },
   };
-}
-
-async function resolveField(
-  ctx: { env(name: string): Promise<string | undefined> },
-  credential: ApiKeyCredential | undefined,
-  name: string,
-): Promise<string | undefined> {
-  return credential?.env?.[name] || (await ctx.env(name));
 }
 
 export function createVolcengineProvider() {
   const provider = createProvider<"openai-completions">({
     id: PROVIDER_ID,
-    name: "Volcengine Ark",
+    name: PROVIDER_NAME,
     baseUrl: BASE_URL,
     auth: {
       apiKey: {
         name: "Volcengine Ark API Key + AK/SK",
         login,
-        async resolve({ ctx, credential }) {
-          const key = credential?.key || (await ctx.env("VOLCENGINE_API_KEY"));
-          const accessKeyId = await resolveField(ctx, credential, "VOLCENGINE_ACCESS_KEY_ID");
-          const secretAccessKey = await resolveField(ctx, credential, "VOLCENGINE_SECRET_ACCESS_KEY");
-          const imageModel = await ctx.env("VOLCENGINE_IMAGE_MODEL");
-          const videoModel = await ctx.env("VOLCENGINE_VIDEO_MODEL");
-          const mediaDir = await ctx.env("VOLCENGINE_MEDIA_DIR");
+        async resolve({ credential }) {
+          const key = credential?.key;
+          const accessKeyId = credential?.env?.[ENV_NAMES.accessKeyId];
+          const secretAccessKey = credential?.env?.[ENV_NAMES.secretAccessKey];
           if (!key && !accessKeyId && !secretAccessKey) return undefined;
           return {
             auth: key ? { apiKey: key } : {},
             env: {
-              ...(accessKeyId ? { VOLCENGINE_ACCESS_KEY_ID: accessKeyId } : {}),
-              ...(secretAccessKey ? { VOLCENGINE_SECRET_ACCESS_KEY: secretAccessKey } : {}),
-              ...(imageModel ? { VOLCENGINE_IMAGE_MODEL: imageModel } : {}),
-              ...(videoModel ? { VOLCENGINE_VIDEO_MODEL: videoModel } : {}),
-              ...(mediaDir ? { VOLCENGINE_MEDIA_DIR: mediaDir } : {}),
+              ...(accessKeyId ? { [ENV_NAMES.accessKeyId]: accessKeyId } : {}),
+              ...(secretAccessKey ? { [ENV_NAMES.secretAccessKey]: secretAccessKey } : {}),
             },
-            source: credential ? "stored Volcengine credentials" : "Volcengine environment variables",
+            source: "stored Volcengine credentials",
           };
         },
       },

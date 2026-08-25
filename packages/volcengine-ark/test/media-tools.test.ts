@@ -49,10 +49,10 @@ test("multiple media model candidates require an explicit selection", () => {
   assert.throws(
     () => chooseMediaModel(models, "image", undefined, undefined),
     (error: unknown) => {
-      assert.match(String(error), /发现多个 image 模型/);
+      assert.match(String(error), /Multiple image models are available/);
       assert.match(String(error), /image-a/);
       assert.match(String(error), /image-b/);
-      assert.match(String(error), /VOLCENGINE_IMAGE_MODEL/);
+      assert.match(String(error), /media-image-model/);
       return true;
     },
   );
@@ -61,6 +61,6 @@ test("multiple media model candidates require an explicit selection", () => {
 test("a model of the wrong modality is rejected", () => {
   assert.throws(
     () => chooseMediaModel(models, "image", "video-a", undefined),
-    /模型 video-a 是 video 模型，不能用于 image 生成/,
+    /Model video-a is a video model and cannot be used for image generation/,
   );
 });

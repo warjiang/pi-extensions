@@ -85,7 +85,7 @@ test("rejects missing local image inputs with a clear error", async (t) => {
       prompt: "make it blue",
       referenceImages: ["missing.png"],
     }),
-    /找不到本地图片：missing\.png/,
+    /Local image not found: missing\.png/,
   );
 });
 

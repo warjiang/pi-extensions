@@ -1,7 +1,5 @@
 import { appendFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import type { ApiKeyCredential, Model, RefreshModelsContext } from "@earendil-works/pi-ai";
+import type { Model, RefreshModelsContext } from "@earendil-works/pi-ai";
 import {
   ARKClient,
   ListEndpointsCommand,
@@ -12,17 +10,15 @@ import {
   Command,
   type CommandOutput,
 } from "@volcengine/sdk-core";
-
-const BASE_URL = "https://ark.cn-beijing.volces.com/api/v3";
-const ZERO_COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
-const CATALOG_PAGE_SIZE = 100;
-const CATALOG_TIMEOUT_MS = 15_000;
-const DEBUG_SETTING = process.env.VOLCENGINE_DEBUG;
-const DEBUG_LOG_PATH = DEBUG_SETTING
-  ? DEBUG_SETTING === "1"
-    ? join(tmpdir(), "volcengine-ark-debug.log")
-    : resolve(DEBUG_SETTING)
-  : undefined;
+import {
+  BASE_URL,
+  DEBUG_LOG_PATH,
+  ENV_NAMES,
+  PAGE_SIZE,
+  PROVIDER_ID,
+  REQUEST_TIMEOUT_MS,
+  ZERO_COST,
+} from "./constants.ts";
 
 type InnerDescribeModelEndpointsRequest =
   ConstructorParameters<typeof ListEndpointsCommand>[0];
@@ -70,18 +66,6 @@ function debug(message: string): void {
   }
 }
 
-function credentials(context: RefreshModelsContext): { accessKeyId: string; secretAccessKey: string } {
-  const credential = context.credential?.type === "api_key"
-    ? context.credential as ApiKeyCredential
-    : undefined;
-  const accessKeyId = credential?.env?.VOLCENGINE_ACCESS_KEY_ID;
-  const secretAccessKey = credential?.env?.VOLCENGINE_SECRET_ACCESS_KEY;
-  if (!accessKeyId || !secretAccessKey) {
-    throw new Error("拉取方舟接入点需要 Access Key 和 Secret Key；请运行 /login 或设置对应环境变量。");
-  }
-  return { accessKeyId, secretAccessKey };
-}
-
 export function classifyEndpoint(item: Endpoint): VolcengineModelKind {
   const foundation = item.ModelReference?.FoundationModel;
   const haystack = [
@@ -109,7 +93,7 @@ function mediaDisplayName(item: Endpoint, fallback: string): string {
     || fallback;
 }
 
-export function endpointToMediaModel(item: Endpoint): VolcengineMediaModel | undefined {
+export function customEndpointToMediaModel(item: Endpoint): VolcengineMediaModel | undefined {
   const inferenceId = item.Id;
   const kind = classifyEndpoint(item);
   if (!inferenceId || !isAvailable(item, inferenceId) || (kind !== "image" && kind !== "video")) {
@@ -143,19 +127,34 @@ export function getCachedMediaModels(): readonly VolcengineMediaModel[] {
   return cachedMediaModels;
 }
 
-function modelProperties(item: Endpoint, fallback: string): Omit<
-  Model<"openai-completions">,
-  "id" | "name"
-> {
+export function displayModelId(name: string, endpointId: string): string {
+  const slug = (name === endpointId ? "ark-endpoint" : name)
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}._-]+/gu, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug || "ark-endpoint";
+}
+
+function endpointToChatModel(item: Endpoint): Model<"openai-completions"> | undefined {
+  const modelId = item.Id;
+  if (!modelId || !isAvailable(item, modelId) || classifyEndpoint(item) !== "chat") {
+    return undefined;
+  }
   const foundation = item.ModelReference?.FoundationModel;
-  const modelName = foundation?.Name;
-  const version = foundation?.ModelVersion;
-  const haystack = `${fallback} ${modelName ?? ""} ${version ?? ""}`.toLowerCase();
+  const displayName = item.Name
+    || [foundation?.Name, foundation?.ModelVersion].filter(Boolean).join(" ")
+    || modelId;
+  const haystack = `${displayName} ${foundation?.Name ?? ""} ${
+    foundation?.ModelVersion ?? ""
+  }`.toLowerCase();
   const vision = /(vision|vl|doubao-seed|kimi-k2\.6|multimodal)/.test(haystack);
   const reasoning = /(deepseek|reason|thinking|r1|glm-5|kimi)/.test(haystack);
   return {
+    id: modelId,
+    name: displayName,
     api: "openai-completions",
-    provider: "volcengine",
+    provider: PROVIDER_ID,
     baseUrl: BASE_URL,
     reasoning,
     input: vision ? ["text", "image"] : ["text"],
@@ -170,50 +169,17 @@ function modelProperties(item: Endpoint, fallback: string): Omit<
   };
 }
 
-export function displayModelId(name: string, endpointId: string): string {
-  const slug = (name === endpointId ? "ark-endpoint" : name)
-    .trim()
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}._-]+/gu, "-")
-    .replace(/^-+|-+$/g, "");
-  return slug || "ark-endpoint";
-}
-
-export function endpointToModel(item: Endpoint): VolcengineEndpointModel | undefined {
-  const endpointId = item.Id;
-  if (!endpointId || !isAvailable(item, endpointId) || classifyEndpoint(item) !== "chat") {
-    return undefined;
-  }
-  const foundation = item.ModelReference?.FoundationModel;
-  const modelName = foundation?.Name;
-  const version = foundation?.ModelVersion;
-  const displayName = item.Name
-    || [modelName, version].filter(Boolean).join(" ")
-    || endpointId;
+export function customEndpointToModel(item: Endpoint): VolcengineEndpointModel | undefined {
+  const model = endpointToChatModel(item);
+  if (!model) return undefined;
   return {
-    id: displayModelId(displayName, endpointId),
-    endpointId,
-    name: displayName,
-    ...modelProperties(item, displayName),
+    ...model,
+    endpointId: model.id,
+    id: displayModelId(model.name, model.id),
   };
 }
 
-export function builtInEndpointToModel(
-  item: Endpoint,
-): Model<"openai-completions"> | undefined {
-  const modelId = item.Id;
-  if (!modelId || !isAvailable(item, modelId) || classifyEndpoint(item) !== "chat") {
-    return undefined;
-  }
-  const displayName = item.Name
-    || item.ModelReference?.FoundationModel?.Name
-    || modelId;
-  return {
-    id: modelId,
-    name: displayName,
-    ...modelProperties(item, modelId),
-  };
-}
+export const builtInEndpointToModel = endpointToChatModel;
 
 function uniqueEndpointModelIds(
   models: VolcengineEndpointModel[],
@@ -238,7 +204,14 @@ export async function fetchEndpointModels(
 ): Promise<readonly Model<"openai-completions">[]> {
   if (!context.allowNetwork) return [];
   debug(`[volcengine] refresh started; log=${DEBUG_LOG_PATH}`);
-  const { accessKeyId, secretAccessKey } = credentials(context);
+  const env = context.credential?.type === "api_key"
+    ? context.credential.env
+    : undefined;
+  const accessKeyId = env?.[ENV_NAMES.accessKeyId];
+  const secretAccessKey = env?.[ENV_NAMES.secretAccessKey];
+  if (!accessKeyId || !secretAccessKey) {
+    throw new Error("Access Key ID and Secret Access Key are required to fetch Ark endpoints; run /login.");
+  }
   const client = injectedClient ?? new ARKClient({
     accessKeyId,
     secretAccessKey,
@@ -246,16 +219,16 @@ export async function fetchEndpointModels(
   });
   const [builtInResponse, customResponse] = await Promise.all([
     client.send(new InnerDescribeModelEndpointsCommand({
-      PageSize: CATALOG_PAGE_SIZE,
+      PageSize: PAGE_SIZE,
     }), {
       abortSignal: context.signal,
-      timeout: CATALOG_TIMEOUT_MS,
+      timeout: REQUEST_TIMEOUT_MS,
     }),
     client.send(new ListEndpointsCommand({
-      PageSize: CATALOG_PAGE_SIZE,
+      PageSize: PAGE_SIZE,
     }), {
       abortSignal: context.signal,
-      timeout: CATALOG_TIMEOUT_MS,
+      timeout: REQUEST_TIMEOUT_MS,
     }),
   ]);
   const builtInItems = builtInResponse.Result?.Items ?? [];
@@ -269,7 +242,7 @@ export async function fetchEndpointModels(
     ).values(),
   ];
   const customModels = customItems
-    .map(endpointToModel)
+    .map(customEndpointToModel)
     .filter((model): model is VolcengineEndpointModel => Boolean(model));
   const uniqueCustomModels = uniqueEndpointModelIds(
     customModels,
@@ -279,7 +252,7 @@ export async function fetchEndpointModels(
     ...new Map(
       [
         ...builtInItems.map(builtInEndpointToMediaModel),
-        ...customItems.map(endpointToMediaModel),
+        ...customItems.map(customEndpointToMediaModel),
       ]
         .filter((model): model is VolcengineMediaModel => Boolean(model))
         .map((model) => [`${model.kind}:${model.inferenceId}`, model]),

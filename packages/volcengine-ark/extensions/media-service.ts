@@ -10,11 +10,13 @@ import {
   type Image,
   type ImagesResponse,
 } from "@volcengine/ark-runtime";
-
-const DEFAULT_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3";
-const REQUEST_TIMEOUT_MS = 60_000;
-const IMAGE_GENERATION_TIMEOUT_MS = 3 * 60_000;
-const MAX_LOCAL_INPUT_BYTES = 20 * 1024 * 1024;
+import {
+  BASE_URL,
+  IMAGE_GENERATION_TIMEOUT_MS,
+  MAX_LOCAL_INPUT_BYTES,
+  MEDIA_REQUEST_TIMEOUT_MS,
+  TERMINAL_VIDEO_STATES,
+} from "./constants.ts";
 
 export interface GeneratedFile {
   path: string;
@@ -183,7 +185,10 @@ function abortError(): Error {
   return new DOMException("The operation was aborted", "AbortError");
 }
 
-function combinedSignal(signal: AbortSignal | undefined, timeoutMs = REQUEST_TIMEOUT_MS): AbortSignal {
+function combinedSignal(
+  signal: AbortSignal | undefined,
+  timeoutMs = MEDIA_REQUEST_TIMEOUT_MS,
+): AbortSignal {
   const timeout = AbortSignal.timeout(timeoutMs);
   return signal ? AbortSignal.any([signal, timeout]) : timeout;
 }
@@ -219,7 +224,7 @@ export class VolcengineMediaService {
     this.client = withTransportRetry(
       options.client ?? createArkMediaClient(
         options.apiKey,
-        options.baseUrl || DEFAULT_BASE_URL,
+        options.baseUrl || BASE_URL,
       ),
     );
   }
@@ -253,7 +258,9 @@ export class VolcengineMediaService {
       { signal },
     );
     const data = Array.isArray(payload.data) ? payload.data : [];
-    if (data.length === 0) throw new Error("方舟图片生成成功响应中没有图片数据。");
+    if (data.length === 0) {
+      throw new Error("The successful Ark image generation response contains no image data.");
+    }
 
     const files: GeneratedFile[] = [];
     for (const [index, rawItem] of data.entries()) {
@@ -271,7 +278,9 @@ export class VolcengineMediaService {
         files.push(await this.saveBase64(base64, `image-${index + 1}`, mimeType));
       }
     }
-    if (files.length === 0) throw new Error("方舟图片生成响应中既没有 URL，也没有 base64 图片。");
+    if (files.length === 0) {
+      throw new Error("The Ark image generation response contains neither a URL nor a base64 image.");
+    }
     const metadataPath = await this.writeMetadata("image", {
       generated_at: new Date().toISOString(),
       request: {
@@ -331,7 +340,9 @@ export class VolcengineMediaService {
       { signal },
     );
     const id = payload.id;
-    if (!id) throw new Error("方舟创建视频任务成功响应中没有任务 ID。");
+    if (!id) {
+      throw new Error("The successful Ark video task response contains no task ID.");
+    }
     this.videoRequests.set(id, body);
     return {
       id,
@@ -370,7 +381,7 @@ export class VolcengineMediaService {
     while (true) {
       const task = await this.getVideoTask(taskId, options.signal);
       options.onStatus?.(task);
-      if (["succeeded", "failed", "cancelled"].includes(task.status)) return task;
+      if (TERMINAL_VIDEO_STATES.has(task.status)) return task;
       if (Date.now() - startedAt >= timeoutMs) return task;
       await sleep(delayMs, options.signal);
       delayMs = Math.min(10_000, delayMs + 2_000);
@@ -380,7 +391,7 @@ export class VolcengineMediaService {
   async downloadVideoTask(task: VideoTask, signal?: AbortSignal): Promise<DownloadedVideoTask> {
     if (task.status !== "succeeded") return task;
     if (!task.outputUrl) {
-      const downloadError = `视频任务 ${task.id} 已完成，但响应中没有视频 URL。`;
+      const downloadError = `Video task ${task.id} succeeded, but the response contains no video URL.`;
       const metadataPath = await this.writeVideoMetadata(task, { download_error: downloadError });
       return {
         ...task,
@@ -408,7 +419,7 @@ export class VolcengineMediaService {
       return {
         ...task,
         localPath: file.path,
-        downloadError: `视频已下载，但元数据保存失败：${
+        downloadError: `The video was downloaded, but its metadata could not be saved: ${
           error instanceof Error ? error.message : String(error)
         }`,
       };
@@ -419,16 +430,16 @@ export class VolcengineMediaService {
     if (/^(https?:|tos:|data:)/i.test(value)) return value;
     const path = isAbsolute(value) ? value : resolve(this.cwd, value);
     const mimeType = mimeForPath(path);
-    if (!mimeType) throw new Error(`不支持的本地图片格式：${value}`);
+    if (!mimeType) throw new Error(`Unsupported local image format: ${value}`);
     let fileStat;
     try {
       fileStat = await stat(path);
     } catch {
-      throw new Error(`找不到本地图片：${value}`);
+      throw new Error(`Local image not found: ${value}`);
     }
-    if (!fileStat.isFile()) throw new Error(`本地图片不是普通文件：${value}`);
+    if (!fileStat.isFile()) throw new Error(`Local image is not a regular file: ${value}`);
     if (fileStat.size > MAX_LOCAL_INPUT_BYTES) {
-      throw new Error(`本地图片超过 20 MiB 限制：${value}`);
+      throw new Error(`Local image exceeds the 20 MiB limit: ${value}`);
     }
     const data = await readFile(path);
     return `data:${mimeType};base64,${data.toString("base64")}`;
@@ -454,11 +465,11 @@ export class VolcengineMediaService {
       }
       if (response.ok) break;
       if (attempt === 2 || (response.status < 500 && response.status !== 429)) {
-        throw new Error(`下载生成产物失败（HTTP ${response.status}）。`);
+        throw new Error(`Failed to download generated output (HTTP ${response.status}).`);
       }
       await sleep(500, signal);
     }
-    if (!response?.ok) throw new Error("下载生成产物失败。");
+    if (!response?.ok) throw new Error("Failed to download generated output.");
     const fallbackMime = fallbackExtension === ".mp4"
       ? "video/mp4"
       : fallbackExtension === ".png"

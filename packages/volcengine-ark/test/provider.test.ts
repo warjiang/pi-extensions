@@ -14,9 +14,9 @@ import {
   builtInEndpointToModel,
   builtInEndpointToMediaModel,
   classifyEndpoint,
+  customEndpointToMediaModel,
+  customEndpointToModel,
   displayModelId,
-  endpointToMediaModel,
-  endpointToModel,
   fetchEndpointModels,
   getCachedMediaModels,
   InnerDescribeModelEndpointsCommand,
@@ -45,6 +45,37 @@ test("login stores API key and AK/SK in one credential", async () => {
   assert.equal(JSON.stringify(createVolcengineProvider()).includes("secret-key"), false);
 });
 
+test("stored credentials take precedence over environment variables", async () => {
+  const auth = await createVolcengineProvider().auth.apiKey!.resolve({
+    credential: {
+      type: "api_key",
+      key: "api-key",
+      env: {
+        VOLCENGINE_ACCESS_KEY_ID: "access-key",
+        VOLCENGINE_SECRET_ACCESS_KEY: "secret-key",
+      },
+    },
+    signal: new AbortController().signal,
+    ctx: { env: async () => "environment", fileExists: async () => false },
+  });
+  assert.equal(auth?.auth.apiKey, "api-key");
+  assert.equal(auth?.env?.VOLCENGINE_ACCESS_KEY_ID, "access-key");
+  assert.equal(auth?.env?.VOLCENGINE_SECRET_ACCESS_KEY, "secret-key");
+});
+
+test("environment variables do not replace stored credentials", async () => {
+  const provider = createVolcengineProvider();
+  const values: Record<string, string> = {
+    VOLCENGINE_ACCESS_KEY_ID: "environment-access-key",
+    VOLCENGINE_SECRET_ACCESS_KEY: "environment-secret-key",
+  };
+  const auth = await provider.auth.apiKey!.resolve({
+    signal: new AbortController().signal,
+    ctx: { env: async (name) => values[name], fileExists: async () => false },
+  });
+  assert.equal(auth, undefined);
+});
+
 test("registers chat provider, media tools and media commands in one extension", () => {
   const tools: string[] = [];
   const commands: string[] = [];
@@ -62,7 +93,13 @@ test("registers chat provider, media tools and media commands in one extension",
   } as unknown as ExtensionAPI);
   assert.equal(providers, 1);
   assert.deepEqual(tools, ["generate_image", "generate_video", "get_video_task"]);
-  assert.deepEqual(commands, ["media-models", "media-refresh"]);
+  assert.deepEqual(commands, [
+    "media-models",
+    "media-image-model",
+    "media-video-model",
+    "media-dir",
+    "media-refresh",
+  ]);
 });
 
 test("defines the unsupported built-in endpoint API as an SDK command", () => {
@@ -84,17 +121,21 @@ test("defines the unsupported built-in endpoint API as an SDK command", () => {
 });
 
 test("maps only running chat endpoints", () => {
-  assert.equal(endpointToModel({ Id: "ep-bad", Status: "Stopped" }), undefined);
-  assert.equal(endpointToModel({
+  assert.equal(customEndpointToModel({ Id: "ep-bad", Status: "Stopped" }), undefined);
+  assert.equal(customEndpointToModel({
     Id: "ep-img",
     Status: "Running",
     ModelReference: { FoundationModel: { Name: "Seedream image" } },
   }), undefined);
   assert.equal(
-    endpointToModel({ Id: "ep-custom", Status: "Running", Name: "My image assistant" })?.id,
+    customEndpointToModel({
+      Id: "ep-custom",
+      Status: "Running",
+      Name: "My image assistant",
+    })?.id,
     "my-image-assistant",
   );
-  const model = endpointToModel({
+  const model = customEndpointToModel({
     Id: "ep-ok",
     Name: "DeepSeek endpoint",
     Status: "Running",
@@ -128,13 +169,13 @@ test("classifies and preserves image and video inference ids", () => {
     kind: "image",
     source: "built-in",
   });
-  assert.deepEqual(endpointToMediaModel(customVideo), {
+  assert.deepEqual(customEndpointToMediaModel(customVideo), {
     inferenceId: "ep-video",
     name: "Product animation",
     kind: "video",
     source: "custom",
   });
-  assert.equal(endpointToModel(customVideo), undefined);
+  assert.equal(customEndpointToModel(customVideo), undefined);
   assert.equal(
     classifyEndpoint({ Id: "ep-chat", Name: "My image assistant", Status: "Running" }),
     "chat",
@@ -171,7 +212,7 @@ test("uses a readable model id while preserving the upstream endpoint id", () =>
   } as Model<"openai-completions"> & { endpointId: string }), "ep-123");
 });
 
-test("migrates legacy endpoint ids in the persisted catalog", () => {
+test("migrates legacy endpoint ids in the persisted model cache", () => {
   const stored = migrateCachedModels({
     checkedAt: 1,
     models: [{
@@ -194,7 +235,7 @@ test("migrates legacy endpoint ids in the persisted catalog", () => {
   );
 });
 
-test("maps SDK endpoint catalogs and treats an empty built-in list as valid", async () => {
+test("maps SDK endpoint responses and treats an empty built-in list as valid", async () => {
   let customCalls = 0;
   const client = mockArkClient(async (command) => {
     if (command instanceof InnerDescribeModelEndpointsCommand) {
@@ -268,7 +309,7 @@ test("keeps separate custom endpoints for the same model", async () => {
   );
 });
 
-test("keeps media models in a separate catalog while publishing chat models only", async () => {
+test("keeps media models separate while publishing chat models only", async () => {
   const client = mockArkClient(async (command) => {
     if (command instanceof InnerDescribeModelEndpointsCommand) {
       return {
