@@ -3,7 +3,6 @@ import type { Model, RefreshModelsContext } from "@earendil-works/pi-ai";
 import {
   ARKClient,
   ListEndpointsCommand,
-  ListFoundationModelsCommand,
 } from "@volcengine/ark";
 import {
   buildRequestConfigFromMetaPath,
@@ -19,16 +18,9 @@ import {
   PROVIDER_ID,
   REQUEST_TIMEOUT_MS,
 } from "./constants.ts";
-import {
-  createFoundationModelIndex,
-  modelCost,
-  resolveModelMetadata,
-} from "./model-manifest.ts";
+import { modelCost, resolveModelMetadata } from "./model-manifest.ts";
 import type {
   Endpoint,
-  FoundationModel,
-  FoundationModelIndex,
-  FoundationModelInfo,
   InnerDescribeModelEndpointsCommandOutput,
   InnerDescribeModelEndpointsRequest,
   VolcengineEndpointModel,
@@ -73,10 +65,10 @@ function isAvailable(item: Endpoint, id: string | undefined): boolean {
 function displayName(
   item: Endpoint,
   fallback: string,
-  foundation?: FoundationModelInfo,
+  manifestDisplayName?: string,
 ): string {
   return item.Name
-    || foundation?.DisplayName
+    || manifestDisplayName
     || item.ModelReference?.FoundationModel?.Name
     || fallback;
 }
@@ -84,17 +76,16 @@ function displayName(
 function endpointToMediaModel(
   item: Endpoint,
   source: VolcengineMediaModel["source"],
-  foundationsByName: FoundationModelIndex,
 ): VolcengineMediaModel | undefined {
   const inferenceId = item.Id;
-  const metadata = resolveModelMetadata(item, foundationsByName);
+  const metadata = resolveModelMetadata(item);
   const { kind } = metadata;
   if (!inferenceId || !isAvailable(item, inferenceId) || (kind !== "image" && kind !== "video")) {
     return undefined;
   }
   return {
     inferenceId,
-    name: displayName(item, inferenceId, metadata.foundation),
+    name: displayName(item, inferenceId, metadata.manifest?.displayName),
     kind,
     source,
     ...(metadata.taskTypes.length ? { taskTypes: metadata.taskTypes } : {}),
@@ -114,17 +105,16 @@ export function displayModelId(name: string, endpointId: string): string {
 
 function endpointToChatModel(
   item: Endpoint,
-  foundationsByName: FoundationModelIndex,
 ): Model<"openai-completions"> | undefined {
   const modelId = item.Id;
-  const metadata = resolveModelMetadata(item, foundationsByName);
+  const metadata = resolveModelMetadata(item);
   for (const diagnostic of metadata.diagnostics) {
     debug(`[volcengine] endpoint=${modelId ?? "unknown"} ${diagnostic}`);
   }
   if (!modelId || !isAvailable(item, modelId) || metadata.kind !== "chat") {
     return undefined;
   }
-  const modelName = displayName(item, modelId, metadata.foundation);
+  const modelName = displayName(item, modelId, metadata.manifest?.displayName);
   const manifest = metadata.manifest;
   const reasoning = manifest?.supportsReasoning ?? false;
   return {
@@ -148,9 +138,8 @@ function endpointToChatModel(
 
 export function customEndpointToModel(
   item: Endpoint,
-  foundationsByName: FoundationModelIndex = new Map(),
 ): VolcengineEndpointModel | undefined {
-  const model = endpointToChatModel(item, foundationsByName);
+  const model = endpointToChatModel(item);
   if (!model) return undefined;
   return {
     ...model,
@@ -161,9 +150,8 @@ export function customEndpointToModel(
 
 export function builtInEndpointToModel(
   item: Endpoint,
-  foundationsByName: FoundationModelIndex = new Map(),
 ): Model<"openai-completions"> | undefined {
-  return endpointToChatModel(item, foundationsByName);
+  return endpointToChatModel(item);
 }
 
 // Prevent custom endpoint display IDs from colliding with built-in models or one another.
@@ -184,32 +172,6 @@ function uniqueEndpointModelIds(
   });
 }
 
-async function listFoundationModels(
-  client: ARKClient,
-  context: RefreshModelsContext,
-): Promise<FoundationModel[]> {
-  const models: FoundationModel[] = [];
-  for (let pageNumber = 1; ; pageNumber += 1) {
-    const response = await client.send(new ListFoundationModelsCommand({
-      PageNumber: pageNumber,
-      PageSize: PAGE_SIZE,
-    }), {
-      abortSignal: context.signal,
-      timeout: REQUEST_TIMEOUT_MS,
-    });
-    const items = response.Result?.Items ?? [];
-    models.push(...items);
-    const totalCount = response.Result?.TotalCount;
-    if (
-      items.length === 0
-      || (totalCount !== undefined && models.length >= totalCount)
-      || (totalCount === undefined && items.length < PAGE_SIZE)
-    ) {
-      return models;
-    }
-  }
-}
-
 export async function fetchEndpointModels(
   context: RefreshModelsContext,
 ): Promise<readonly Model<"openai-completions">[]> {
@@ -228,7 +190,7 @@ export async function fetchEndpointModels(
     secretAccessKey,
     region: "cn-beijing",
   });
-  const [builtInResponse, customResponse, foundationModels] = await Promise.all([
+  const [builtInResponse, customResponse] = await Promise.all([
     client.send(new InnerDescribeModelEndpointsCommand({
       PageSize: PAGE_SIZE,
     }), {
@@ -241,21 +203,19 @@ export async function fetchEndpointModels(
       abortSignal: context.signal,
       timeout: REQUEST_TIMEOUT_MS,
     }),
-    listFoundationModels(client, context),
   ]);
   const builtInItems = builtInResponse.Result?.Items ?? [];
   const customItems = customResponse.Result?.Items ?? [];
-  const foundationsByName = createFoundationModelIndex(foundationModels);
   const builtInModels = [
     ...new Map(
       builtInItems
-        .map((item) => builtInEndpointToModel(item, foundationsByName))
+        .map((item) => builtInEndpointToModel(item))
         .filter((model): model is Model<"openai-completions"> => Boolean(model))
         .map((model) => [model.id, model]),
     ).values(),
   ];
   const customModels = customItems
-    .map((item) => customEndpointToModel(item, foundationsByName))
+    .map((item) => customEndpointToModel(item))
     .filter((model): model is VolcengineEndpointModel => Boolean(model));
   const uniqueCustomModels = uniqueEndpointModelIds(
     customModels,
@@ -265,10 +225,10 @@ export async function fetchEndpointModels(
     ...new Map(
       [
         ...builtInItems.map(
-          (item) => endpointToMediaModel(item, "built-in", foundationsByName),
+          (item) => endpointToMediaModel(item, "built-in"),
         ),
         ...customItems.map(
-          (item) => endpointToMediaModel(item, "custom", foundationsByName),
+          (item) => endpointToMediaModel(item, "custom"),
         ),
       ]
         .filter((model): model is VolcengineMediaModel => Boolean(model))
@@ -276,7 +236,7 @@ export async function fetchEndpointModels(
     ).values(),
   ];
   debug(
-    `[volcengine] refresh succeeded; foundations=${foundationModels.length} builtIn=${builtInModels.length} custom=${uniqueCustomModels.length} media=${cachedMediaModels.length}`,
+    `[volcengine] refresh succeeded; builtIn=${builtInModels.length} custom=${uniqueCustomModels.length} media=${cachedMediaModels.length}`,
   );
   return [...builtInModels, ...uniqueCustomModels];
 }

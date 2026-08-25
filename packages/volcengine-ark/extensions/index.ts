@@ -132,9 +132,7 @@ export function createVolcengineProvider() {
       },
     },
     models: [] as Model<"openai-completions">[],
-    async fetchModels(context: RefreshModelsContext) {
-      return fetchEndpointModels(context);
-    },
+    fetchModels: fetchEndpointModels,
     api: withEndpointModelIds(openAICompletionsApi()),
   });
   const refreshModels = provider.refreshModels!;

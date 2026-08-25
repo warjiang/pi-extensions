@@ -22,16 +22,6 @@ export type {
   GenerateImagesRequest,
 };
 
-export interface FoundationModelInfo {
-  Name?: string;
-  DisplayName?: string;
-  PrimaryVersion?: string;
-  FoundationModelTag?: {
-    Domains?: string[];
-    TaskTypes?: string[];
-  };
-}
-
 export interface EndpointModelInfo {
   Id?: string;
   EndpointModelType?: string;
@@ -50,6 +40,11 @@ export interface ManifestPriceTier {
 }
 
 export interface ManifestModel {
+  name?: string;
+  displayName?: string;
+  primaryVersion?: string;
+  taskTypes?: string[];
+  domains?: string[];
   mode?: string;
   maxInputTokens?: number;
   maxOutputTokens?: number;
@@ -68,13 +63,13 @@ export interface ModelManifest {
     ref: string;
     commit: string;
     generatedAt: string;
+    arkOperation?: "ListFoundationModels";
   };
   models: Record<string, ManifestModel>;
 }
 
 export interface ResolvedModelMetadata {
   kind: "chat" | "image" | "video" | "other";
-  foundation?: FoundationModelInfo;
   manifestId?: string;
   manifest?: ManifestModel;
   taskTypes: readonly string[];
@@ -93,8 +88,6 @@ export type ListFoundationModelsResponse =
   ListFoundationModelsCommandOutput extends CommandOutput<infer Response> ? Response : never;
 export type FoundationModel =
   NonNullable<ListFoundationModelsResponse["Items"]>[number];
-export type FoundationModelIndex =
-  ReadonlyMap<string, readonly FoundationModelInfo[]>;
 
 export type VolcengineEndpointModel = Model<"openai-completions"> & {
   endpointId: string;
@@ -212,6 +205,7 @@ export interface MediaToolDetails {
 
 export interface ModelManifestUpdateOptions {
   input?: string;
+  foundationModelsInput?: string;
   commit?: string;
   output?: string;
 }

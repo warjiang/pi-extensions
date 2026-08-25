@@ -13,6 +13,7 @@ const PACKAGE_DIR = resolve(import.meta.dirname, "..");
 test("generates a filtered and stable Volcengine manifest", async () => {
   const directory = await mkdtemp(join(tmpdir(), "volcengine-manifest-"));
   const input = join(directory, "input.json");
+  const foundationModelsInput = join(directory, "foundation-models.json");
   const output = join(directory, "nested", "manifest.json");
   await writeFile(input, JSON.stringify({
     "volcengine/Z_Model": {
@@ -33,12 +34,34 @@ test("generates a filtered and stable Volcengine manifest", async () => {
       mode: "chat",
     },
   }), "utf8");
+  await writeFile(foundationModelsInput, JSON.stringify([
+    {
+      Name: "Z Model",
+      DisplayName: "Z Model Display",
+      FoundationModelTag: {
+        TaskTypes: ["Text Generation"],
+        Domains: ["Multimodal"],
+      },
+    },
+    {
+      Name: "A Model",
+    },
+    {
+      Name: "Image Model 1.0",
+      PrimaryVersion: "1.0",
+      FoundationModelTag: {
+        TaskTypes: ["Image Generation"],
+      },
+    },
+  ]), "utf8");
 
   try {
     await execFileAsync(process.execPath, [
       "scripts/update-model-manifest.ts",
       "--input",
       input,
+      "--foundation-models-input",
+      foundationModelsInput,
       "--commit",
       "0123456789abcdef0123456789abcdef01234567",
       "--output",
@@ -50,17 +73,30 @@ test("generates a filtered and stable Volcengine manifest", async () => {
       join(directory, "nested", "manifest.metadata.json"),
       "utf8",
     ));
-    assert.deepEqual(Object.keys(generated.models), ["a-model", "z-model"]);
+    assert.deepEqual(
+      Object.keys(generated.models),
+      ["a-model", "image-model-1-0", "z-model"],
+    );
     assert.deepEqual(generated.models["z-model"], {
+      name: "Z Model",
+      displayName: "Z Model Display",
+      taskTypes: ["Text Generation"],
+      domains: ["Multimodal"],
       mode: "chat",
       maxInputTokens: 10,
       supportsReasoning: true,
+    });
+    assert.deepEqual(generated.models["image-model-1-0"], {
+      name: "Image Model 1.0",
+      primaryVersion: "1.0",
+      taskTypes: ["Image Generation"],
     });
     assert.equal(generated.models["other-model"], undefined);
     assert.equal(
       generated.source.commit,
       "0123456789abcdef0123456789abcdef01234567",
     );
+    assert.equal(generated.source.arkOperation, "ListFoundationModels");
     assert.equal(metadata.generatedAt, generated.source.generatedAt);
     assert.equal(
       metadata.sha256,

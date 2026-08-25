@@ -6,7 +6,18 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import {
+  ARKClient,
+  ListFoundationModelsCommand,
+} from "@volcengine/ark";
+import {
+  ENV_NAMES,
+  PAGE_SIZE,
+  REQUEST_TIMEOUT_MS,
+} from "../extensions/constants.ts";
 import type {
+  FoundationModel,
+  ManifestModel,
   ManifestPriceTier,
   ModelManifestUpdateOptions,
 } from "../extensions/types.ts";
@@ -24,7 +35,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function normalizeModelId(value: string): string {
+function normalizeModelKey(value: string): string {
   return value
     .trim()
     .toLowerCase()
@@ -52,6 +63,9 @@ function parseArguments(argv: string[]): ModelManifestUpdateOptions {
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === "--input") options.input = argv[++index];
+    else if (argument === "--foundation-models-input") {
+      options.foundationModelsInput = argv[++index];
+    }
     else if (argument === "--commit") options.commit = argv[++index];
     else if (argument === "--output") options.output = argv[++index];
     else throw new Error(`Unknown argument: ${argument}`);
@@ -99,7 +113,7 @@ function convertTier(tier: unknown): ManifestPriceTier | undefined {
   return { inputTokensAbove: start, inputCostPerToken, outputCostPerToken };
 }
 
-function convertModel(value: Record<string, unknown>): Record<string, unknown> {
+function convertModel(value: Record<string, unknown>): ManifestModel {
   const tiers = Array.isArray(value.tiered_pricing)
     ? value.tiered_pricing
         .map(convertTier)
@@ -119,25 +133,106 @@ function convertModel(value: Record<string, unknown>): Record<string, unknown> {
   });
 }
 
+async function listFoundationModels(
+  input: string | undefined,
+): Promise<FoundationModel[]> {
+  if (input) {
+    const parsed: unknown = JSON.parse(await readFile(resolve(input), "utf8"));
+    if (Array.isArray(parsed)) return parsed as FoundationModel[];
+    if (
+      isRecord(parsed)
+      && isRecord(parsed.Result)
+      && Array.isArray(parsed.Result.Items)
+    ) {
+      return parsed.Result.Items as FoundationModel[];
+    }
+    throw new Error("Ark foundation model input must be an array or an SDK response.");
+  }
+
+  const accessKeyId = process.env[ENV_NAMES.accessKeyId];
+  const secretAccessKey = process.env[ENV_NAMES.secretAccessKey];
+  if (!accessKeyId || !secretAccessKey) {
+    throw new Error(
+      `${ENV_NAMES.accessKeyId} and ${ENV_NAMES.secretAccessKey} are required to list Ark foundation models.`,
+    );
+  }
+  const client = new ARKClient({
+    accessKeyId,
+    secretAccessKey,
+    region: "cn-beijing",
+  });
+  const models: FoundationModel[] = [];
+  for (let pageNumber = 1; ; pageNumber += 1) {
+    const response = await client.send(new ListFoundationModelsCommand({
+      PageNumber: pageNumber,
+      PageSize: PAGE_SIZE,
+    }), {
+      timeout: REQUEST_TIMEOUT_MS,
+    });
+    const items = response.Result?.Items ?? [];
+    models.push(...items);
+    const totalCount = response.Result?.TotalCount;
+    if (
+      items.length === 0
+      || (totalCount !== undefined && models.length >= totalCount)
+      || (totalCount === undefined && items.length < PAGE_SIZE)
+    ) {
+      return models;
+    }
+  }
+}
+
 const options = parseArguments(process.argv.slice(2));
 const commit = options.commit ?? await resolveCommit();
 const source = await loadSource(options.input, commit);
+const foundationModels = await listFoundationModels(options.foundationModelsInput);
 const outputFile = resolve(options.output ?? OUTPUT_FILE);
 const outputDirectory = dirname(outputFile);
 const outputBaseName = basename(outputFile, extname(outputFile));
 const metadataFile = join(outputDirectory, `${outputBaseName}.metadata.json`);
-const models: Record<string, Record<string, unknown>> = {};
+const liteLLMModels = new Map<string, ManifestModel>();
 
 for (const [upstreamId, value] of Object.entries(source)) {
   if (!isRecord(value) || value.litellm_provider !== "volcengine") {
     continue;
   }
-  const id = normalizeModelId(upstreamId);
+  const id = normalizeModelKey(upstreamId);
   if (!id) continue;
-  if (models[id]) {
+  if (liteLLMModels.has(id)) {
     throw new Error(`Duplicate normalized Volcengine model id: ${id}`);
   }
-  models[id] = convertModel(value);
+  liteLLMModels.set(id, convertModel(value));
+}
+
+const models: Record<string, ManifestModel> = {};
+for (const foundation of foundationModels) {
+  const name = foundation.Name?.trim();
+  if (!name) continue;
+  const primaryVersion = foundation.PrimaryVersion?.trim();
+  const normalizedName = normalizeModelKey(name);
+  const normalizedVersion = primaryVersion
+    ? normalizeModelKey(primaryVersion)
+    : undefined;
+  const id = normalizedVersion && !normalizedName.endsWith(normalizedVersion)
+    ? normalizeModelKey(`${name}-${primaryVersion}`)
+    : normalizedName;
+  if (!id) continue;
+  if (models[id]) {
+    throw new Error(`Duplicate normalized Ark foundation model id: ${id}`);
+  }
+  const liteLLM = liteLLMModels.get(id) ?? liteLLMModels.get(normalizeModelKey(name));
+  models[id] = {
+    name,
+    ...(foundation.DisplayName ? { displayName: foundation.DisplayName } : {}),
+    ...(primaryVersion ? { primaryVersion } : {}),
+    ...(foundation.FoundationModelTag?.TaskTypes?.length
+      ? { taskTypes: foundation.FoundationModelTag.TaskTypes }
+      : {}),
+    ...(foundation.FoundationModelTag?.Domains?.length
+      ? { domains: foundation.FoundationModelTag.Domains }
+      : {}),
+    ...liteLLM,
+  };
 }
 
 const sortedModels = Object.fromEntries(
@@ -150,6 +245,7 @@ const manifest = {
     ref: REF,
     commit,
     generatedAt,
+    arkOperation: "ListFoundationModels",
   },
   models: sortedModels,
 };
@@ -162,4 +258,4 @@ await Promise.all([
   writeFile(outputFile, manifestText, "utf8"),
   writeFile(metadataFile, metadataText, "utf8"),
 ]);
-console.log(`Wrote ${Object.keys(sortedModels).length} Volcengine models to ${outputFile}`);
+console.log(`Wrote ${Object.keys(sortedModels).length} Ark foundation models to ${outputFile}`);
