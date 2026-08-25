@@ -30,6 +30,11 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "node --experimental-strip-types --test test/*.test.ts"
   },
+  "dependencies": {
+    "@volcengine/ark": "^1.0.3",
+    "@volcengine/ark-runtime": "^1.0.10",
+    "@volcengine/sdk-core": "^1.0.2"
+  },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
     "@earendil-works/pi-coding-agent": "*"

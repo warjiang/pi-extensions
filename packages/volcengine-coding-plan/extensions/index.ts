@@ -14,16 +14,18 @@ export const BASE_URL = "https://ark.cn-beijing.volces.com/api/coding/v3";
 export async function login(interaction: AuthInteraction): Promise<ApiKeyCredential> {
   const key = await interaction.prompt({
     type: "secret",
-    message: "Volcengine Coding Plan API Key",
-    placeholder: "ark-...",
+    message: "Enter your Volcengine Coding Plan API Key:",
+    placeholder: "Volcengine Coding Plan API Key",
   });
   const accessKeyId = await interaction.prompt({
     type: "secret",
-    message: "火山引擎 Access Key ID（用于拉取 Coding Plan 模型）",
+    message: "Enter your Volcengine Coding Plan Access Key ID:",
+    placeholder: "Volcengine Coding Plan Access Key ID",
   });
   const secretAccessKey = await interaction.prompt({
     type: "secret",
-    message: "火山引擎 Secret Access Key（用于拉取 Coding Plan 模型）",
+    message: "Enter your Volcengine Coding Plan Secret Access Key:",
+    placeholder: "Volcengine Coding Plan Secret Access Key",
   });
   return {
     type: "api_key",
@@ -46,7 +48,7 @@ async function resolveField(
 export function createCodingPlanProvider() {
   return createProvider<"openai-completions">({
     id: PROVIDER_ID,
-    name: "Volcengine Coding Plan（个人版）",
+    name: "Volcengine Coding Plan",
     baseUrl: BASE_URL,
     auth: {
       apiKey: {

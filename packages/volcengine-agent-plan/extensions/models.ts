@@ -1,11 +1,15 @@
-import { createHash, createHmac } from "node:crypto";
 import type { ApiKeyCredential, Model, RefreshModelsContext } from "@earendil-works/pi-ai";
+import { ARKClient } from "@volcengine/ark";
+import {
+  buildRequestConfigFromMetaPath,
+  Command,
+  HttpRequestError,
+  type CommandOutput,
+} from "@volcengine/sdk-core";
 
 const PROVIDER_ID = "volcengine-agent-plan";
 const BASE_URL = "https://ark.cn-beijing.volces.com/api/plan/v3";
-const CONTROL_URL = "https://ark.cn-beijing.volcengineapi.com/";
-const ACTION = "ListArkAgentPlanModel";
-const VERSION = "2024-01-01";
+const CONTROL_HOST = "ark.cn-beijing.volcengineapi.com";
 const ZERO_COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 const TIMEOUT_MS = 15_000;
 const BASE_COMPAT = {
@@ -15,57 +19,44 @@ const BASE_COMPAT = {
   maxTokensField: "max_tokens" as const,
 };
 
-type JsonObject = Record<string, unknown>;
+type PlanModelResponse = {
+  Datas?: Array<{ ModelID?: string }>;
+};
+export type PlanModelCommandOutput =
+  Omit<CommandOutput<PlanModelResponse>, "ResponseMetadata">
+  & Partial<Pick<CommandOutput<PlanModelResponse>, "ResponseMetadata">>;
 
-function object(value: unknown): JsonObject | undefined {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? value as JsonObject
-    : undefined;
+export class ListArkAgentPlanModelCommand extends Command<
+  Record<string, never>,
+  PlanModelCommandOutput,
+  "ListArkAgentPlanModelCommand"
+> {
+  static readonly metaPath = "/ListArkAgentPlanModel/2024-01-01/ark/post/application_json/";
+
+  constructor(input: Record<string, never>) {
+    super(input);
+    this.requestConfig = buildRequestConfigFromMetaPath(ListArkAgentPlanModelCommand.metaPath);
+  }
 }
 
-function text(value: unknown): string | undefined {
-  return typeof value === "string" && value.length > 0 ? value : undefined;
+export interface PlanModelClient {
+  send(
+    command: ListArkAgentPlanModelCommand,
+    options: { abortSignal: AbortSignal },
+  ): Promise<PlanModelCommandOutput>;
 }
 
-function sha256(value: string): string {
-  return createHash("sha256").update(value).digest("hex");
-}
+export type PlanModelClientFactory = (
+  credentials: { accessKeyId: string; secretAccessKey: string },
+) => PlanModelClient;
 
-function hmac(key: string | Buffer, value: string): Buffer {
-  return createHmac("sha256", key).update(value).digest();
-}
-
-export function signPlanModelRequest(
-  action: string,
-  body: string,
-  accessKeyId: string,
-  secretAccessKey: string,
-  date = new Date(),
-): { authorization: string; xDate: string; xContentSha256: string } {
-  const xDate = date.toISOString().replace(/[:-]|\.\d{3}/g, "");
-  const day = xDate.slice(0, 8);
-  const query = `Action=${action}&Version=${VERSION}`;
-  const host = new URL(CONTROL_URL).host;
-  const xContentSha256 = sha256(body);
-  const signedHeaders = "host;x-content-sha256;x-date";
-  const canonicalRequest = [
-    "POST",
-    "/",
-    query,
-    `host:${host}\nx-content-sha256:${xContentSha256}\nx-date:${xDate}\n`,
-    signedHeaders,
-    xContentSha256,
-  ].join("\n");
-  const scope = `${day}/cn-beijing/ark/request`;
-  const stringToSign = `HMAC-SHA256\n${xDate}\n${scope}\n${sha256(canonicalRequest)}`;
-  const signingKey = hmac(hmac(hmac(hmac(secretAccessKey, day), "cn-beijing"), "ark"), "request");
-  const signature = createHmac("sha256", signingKey).update(stringToSign).digest("hex");
-  return {
-    xDate,
-    xContentSha256,
-    authorization: `HMAC-SHA256 Credential=${accessKeyId}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
-  };
-}
+const createPlanModelClient: PlanModelClientFactory = ({ accessKeyId, secretAccessKey }) =>
+  new ARKClient({
+    accessKeyId,
+    secretAccessKey,
+    host: CONTROL_HOST,
+    region: "cn-beijing",
+  });
 
 function credentials(context: RefreshModelsContext): { accessKeyId: string; secretAccessKey: string } {
   const credential = context.credential?.type === "api_key"
@@ -79,21 +70,18 @@ function credentials(context: RefreshModelsContext): { accessKeyId: string; secr
   return { accessKeyId, secretAccessKey };
 }
 
-function parseModelIds(payload: unknown): string[] {
-  const root = object(payload);
-  const metadata = object(root?.ResponseMetadata);
-  const apiError = object(metadata?.Error);
+function parseModelIds(payload: PlanModelCommandOutput): string[] {
+  const apiError = payload.ResponseMetadata?.Error;
   if (apiError) {
-    const code = text(apiError.Code) ?? "UnknownError";
-    throw new Error(`Agent Plan 模型目录请求失败（${code}）`);
+    throw new Error(`Agent Plan 模型目录请求失败（${apiError.Code || "UnknownError"}）`);
   }
-  const result = object(root?.Result);
-  if (!Array.isArray(result?.Datas)) {
+  const entries = payload.Result?.Datas;
+  if (!Array.isArray(entries)) {
     throw new Error("Agent Plan ListArkAgentPlanModel 返回格式已变化");
   }
-  return result.Datas.map(object)
-    .map((entry) => text(entry?.ModelID))
-    .filter((id): id is string => Boolean(id));
+  return entries
+    .map((entry) => entry.ModelID)
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
 }
 
 function modelFromId(id: string): Model<"openai-completions"> {
@@ -118,29 +106,28 @@ function modelFromId(id: string): Model<"openai-completions"> {
 
 export async function fetchPlanModels(
   context: RefreshModelsContext,
-  fetchImpl: typeof fetch = fetch,
+  clientFactory: PlanModelClientFactory = createPlanModelClient,
 ): Promise<readonly Model<"openai-completions">[]> {
   if (!context.allowNetwork) return [];
   const { accessKeyId, secretAccessKey } = credentials(context);
-  const body = "{}";
-  const signed = signPlanModelRequest(ACTION, body, accessKeyId, secretAccessKey);
   const signal = AbortSignal.any([context.signal, AbortSignal.timeout(TIMEOUT_MS)]);
-  const response = await fetchImpl(`${CONTROL_URL}?Action=${ACTION}&Version=${VERSION}`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "x-date": signed.xDate,
-      "x-content-sha256": signed.xContentSha256,
-      authorization: signed.authorization,
-    },
-    body,
-    signal,
-  });
-  if (response.status === 401 || response.status === 403) {
-    throw new Error("Agent Plan 模型目录 AK/SK 鉴权失败，请重新运行 /login。");
+  let payload: PlanModelCommandOutput;
+  try {
+    payload = await clientFactory({ accessKeyId, secretAccessKey }).send(
+      new ListArkAgentPlanModelCommand({}),
+      { abortSignal: signal },
+    );
+  } catch (error) {
+    if (signal.aborted) throw signal.reason;
+    if (!(error instanceof HttpRequestError)) throw error;
+    if (error.status === 401 || error.status === 403) {
+      throw new Error("Agent Plan 模型目录 AK/SK 鉴权失败，请重新运行 /login。");
+    }
+    if (error.data) parseModelIds(error.data as PlanModelCommandOutput);
+    if (error.status !== undefined) {
+      throw new Error(`Agent Plan 模型目录请求失败（HTTP ${error.status}）`);
+    }
+    throw error;
   }
-  if (!response.ok) throw new Error(`Agent Plan 模型目录请求失败（HTTP ${response.status}）`);
-  let payload: unknown;
-  try { payload = await response.json(); } catch { throw new Error("Agent Plan 模型目录返回了畸形 JSON"); }
   return parseModelIds(payload).map(modelFromId);
 }

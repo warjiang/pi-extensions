@@ -1,13 +1,20 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { extname, isAbsolute, join, resolve } from "node:path";
+import {
+  ArkRuntimeClient,
+  type CreateContentGenerationContentItem,
+  type CreateContentGenerationTaskRequest,
+  type GenerateImagesRequest,
+  type GetContentGenerationTaskResponse,
+  type Image,
+  type ImagesResponse,
+} from "@volcengine/ark-runtime";
 
 const DEFAULT_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3";
 const REQUEST_TIMEOUT_MS = 60_000;
 const IMAGE_GENERATION_TIMEOUT_MS = 3 * 60_000;
 const MAX_LOCAL_INPUT_BYTES = 20 * 1024 * 1024;
-
-type JsonObject = Record<string, unknown>;
 
 export interface GeneratedFile {
   path: string;
@@ -70,16 +77,68 @@ export interface MediaServiceOptions {
   outputDir: string;
   cwd: string;
   fetch?: typeof fetch;
+  client?: ArkMediaClient;
 }
 
-function object(value: unknown): JsonObject | undefined {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? value as JsonObject
-    : undefined;
+export interface ArkMediaClient {
+  generateImages(
+    request: GenerateImagesRequest,
+    options?: { signal?: AbortSignal },
+  ): Promise<Pick<ImagesResponse, "model"> & {
+    data: Array<Partial<Pick<Image, "url" | "b64_json">>>;
+  }>;
+  createContentGenerationTask(
+    request: CreateContentGenerationTaskRequest,
+    options?: { signal?: AbortSignal },
+  ): ReturnType<ArkRuntimeClient["createContentGenerationTask"]>;
+  getContentGenerationTask(
+    taskId: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<
+    Pick<GetContentGenerationTaskResponse, "id" | "status">
+    & Partial<Pick<GetContentGenerationTaskResponse, "model" | "error">>
+    & { content?: Partial<GetContentGenerationTaskResponse["content"]> }
+  >;
 }
 
-function text(value: unknown): string | undefined {
-  return typeof value === "string" && value.length > 0 ? value : undefined;
+function createArkMediaClient(apiKey: string, baseUrl: string): ArkMediaClient {
+  const config = {
+    baseURL: baseUrl.replace(/\/+$/, ""),
+    timeout: IMAGE_GENERATION_TIMEOUT_MS,
+  };
+  const writes = ArkRuntimeClient.withApiKey(apiKey, { ...config, retryTimes: 0 });
+  const reads = ArkRuntimeClient.withApiKey(apiKey, { ...config, retryTimes: 1 });
+  return {
+    generateImages: (request, options) => writes.generateImages(request, options),
+    createContentGenerationTask: (request, options) =>
+      writes.createContentGenerationTask(request, options),
+    getContentGenerationTask: (taskId, options) =>
+      reads.getContentGenerationTask(taskId, options),
+  };
+}
+
+function isTransportError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const axiosError = error as Error & { response?: unknown };
+  return axiosError.name === "AxiosError" && axiosError.response === undefined;
+}
+
+function withTransportRetry(client: ArkMediaClient): ArkMediaClient {
+  return {
+    generateImages: (request, options) => client.generateImages(request, options),
+    createContentGenerationTask: (request, options) =>
+      client.createContentGenerationTask(request, options),
+    async getContentGenerationTask(taskId, options) {
+      try {
+        return await client.getContentGenerationTask(taskId, options);
+      } catch (error) {
+        if (options?.signal?.aborted) throw options.signal.reason;
+        if (!isTransportError(error)) throw error;
+        await sleep(500, options?.signal);
+        return client.getContentGenerationTask(taskId, options);
+      }
+    },
+  };
 }
 
 function mimeForPath(path: string): string | undefined {
@@ -140,16 +199,6 @@ async function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-function apiError(payload: unknown, status: number): Error {
-  const root = object(payload);
-  const error = object(root?.error);
-  const code = text(error?.code) ?? text(root?.code);
-  const message = text(error?.message) ?? text(root?.message);
-  return new Error(
-    `方舟媒体请求失败（HTTP ${status}${code ? `, ${code}` : ""}）${message ? `：${message}` : ""}`,
-  );
-}
-
 export function resolveMediaOutputDir(cwd: string, configured?: string): string {
   const value = configured?.trim();
   if (!value) return join(cwd, ".pi", "media");
@@ -157,19 +206,22 @@ export function resolveMediaOutputDir(cwd: string, configured?: string): string 
 }
 
 export class VolcengineMediaService {
-  private readonly apiKey: string;
-  private readonly baseUrl: string;
   private readonly outputDir: string;
   private readonly cwd: string;
   private readonly fetchImpl: typeof fetch;
+  private readonly client: ArkMediaClient;
   private readonly videoRequests = new Map<string, unknown>();
 
   constructor(options: MediaServiceOptions) {
-    this.apiKey = options.apiKey;
-    this.baseUrl = (options.baseUrl || DEFAULT_BASE_URL).replace(/\/+$/, "");
     this.outputDir = options.outputDir;
     this.cwd = options.cwd;
     this.fetchImpl = options.fetch ?? fetch;
+    this.client = withTransportRetry(
+      options.client ?? createArkMediaClient(
+        options.apiKey,
+        options.baseUrl || DEFAULT_BASE_URL,
+      ),
+    );
   }
 
   async generateImages(
@@ -180,7 +232,7 @@ export class VolcengineMediaService {
       (request.referenceImages ?? []).map((value) => this.resolveImageInput(value)),
     );
     const count = request.count ?? 1;
-    const body: JsonObject = {
+    const body: GenerateImagesRequest = {
       model: request.model,
       prompt: request.prompt,
       response_format: "url",
@@ -196,21 +248,17 @@ export class VolcengineMediaService {
           }
         : {}),
     };
-    const payload = await this.requestJson("/images/generations", {
-      method: "POST",
-      body: JSON.stringify(body),
-      signal,
-      timeoutMs: IMAGE_GENERATION_TIMEOUT_MS,
-    });
-    const root = object(payload);
-    const data = Array.isArray(root?.data) ? root.data : [];
+    const payload = await this.client.generateImages(
+      body,
+      { signal },
+    );
+    const data = Array.isArray(payload.data) ? payload.data : [];
     if (data.length === 0) throw new Error("方舟图片生成成功响应中没有图片数据。");
 
     const files: GeneratedFile[] = [];
     for (const [index, rawItem] of data.entries()) {
-      const item = object(rawItem);
-      const url = text(item?.url);
-      const base64 = text(item?.b64_json);
+      const url = rawItem.url;
+      const base64 = rawItem.b64_json;
       if (url) {
         files.push(await this.download(
           url,
@@ -240,7 +288,7 @@ export class VolcengineMediaService {
       local_paths: files.map((file) => file.path),
     });
     return {
-      model: text(root?.model) ?? request.model,
+      model: payload.model || request.model,
       files,
       response: payload,
       metadataPath,
@@ -251,7 +299,9 @@ export class VolcengineMediaService {
     request: VideoGenerationRequest,
     signal?: AbortSignal,
   ): Promise<VideoTask> {
-    const content: JsonObject[] = [{ type: "text", text: request.prompt }];
+    const content: CreateContentGenerationContentItem[] = [
+      { type: "text", text: request.prompt },
+    ];
     if (request.firstFrame) {
       content.push({
         type: "image_url",
@@ -266,7 +316,7 @@ export class VolcengineMediaService {
         role: "last_frame",
       });
     }
-    const body = {
+    const body: CreateContentGenerationTaskRequest = {
       model: request.model,
       content,
       ...(request.ratio ? { ratio: request.ratio } : {}),
@@ -276,41 +326,31 @@ export class VolcengineMediaService {
       ...(request.watermark !== undefined ? { watermark: request.watermark } : {}),
       ...(request.generateAudio !== undefined ? { generate_audio: request.generateAudio } : {}),
     };
-    const payload = await this.requestJson("/contents/generations/tasks", {
-      method: "POST",
-      body: JSON.stringify(body),
-      signal,
-    });
-    const id = text(object(payload)?.id);
+    const payload = await this.client.createContentGenerationTask(
+      body,
+      { signal },
+    );
+    const id = payload.id;
     if (!id) throw new Error("方舟创建视频任务成功响应中没有任务 ID。");
     this.videoRequests.set(id, body);
     return {
       id,
       model: request.model,
-      status: text(object(payload)?.status) ?? "queued",
+      status: "queued",
       request: body,
       raw: payload,
     };
   }
 
   async getVideoTask(taskId: string, signal?: AbortSignal): Promise<VideoTask> {
-    const payload = await this.requestJson(
-      `/contents/generations/tasks/${encodeURIComponent(taskId)}`,
-      { method: "GET", signal },
-      true,
-    );
-    const root = object(payload);
-    const content = object(root?.content);
-    const error = object(root?.error) ?? object(root?.failure_reason);
+    const payload = await this.client.getContentGenerationTask(taskId, { signal });
     return {
-      id: text(root?.id) ?? taskId,
-      model: text(root?.model),
-      status: text(root?.status) ?? "unknown",
-      outputUrl: text(content?.video_url) ?? text(content?.file_url) ?? text(root?.output_url),
-      lastFrameUrl: text(content?.last_frame_url),
-      error: error
-        ? { code: text(error.code), message: text(error.message) }
-        : undefined,
+      id: payload.id || taskId,
+      model: payload.model,
+      status: payload.status || "unknown",
+      outputUrl: payload.content?.video_url || payload.content?.file_url,
+      lastFrameUrl: payload.content?.last_frame_url,
+      error: payload.error,
       request: this.videoRequests.get(taskId),
       raw: payload,
     };
@@ -392,47 +432,6 @@ export class VolcengineMediaService {
     }
     const data = await readFile(path);
     return `data:${mimeType};base64,${data.toString("base64")}`;
-  }
-
-  private async requestJson(
-    path: string,
-    init: { method: string; body?: string; signal?: AbortSignal; timeoutMs?: number },
-    retrySafe = false,
-  ): Promise<unknown> {
-    const attempts = retrySafe ? 2 : 1;
-    for (let attempt = 1; attempt <= attempts; attempt += 1) {
-      let response: Response;
-      try {
-        response = await this.fetchImpl(`${this.baseUrl}${path}`, {
-          method: init.method,
-          headers: {
-            authorization: `Bearer ${this.apiKey}`,
-            "content-type": "application/json",
-          },
-          body: init.body,
-          signal: combinedSignal(init.signal, init.timeoutMs),
-        });
-      } catch (error) {
-        if (attempt < attempts && !init.signal?.aborted) {
-          await sleep(500, init.signal);
-          continue;
-        }
-        throw error;
-      }
-      let payload: unknown;
-      try {
-        payload = await response.json();
-      } catch {
-        throw new Error(`方舟媒体接口返回了畸形 JSON（HTTP ${response.status}）。`);
-      }
-      if (response.ok) return payload;
-      if (attempt < attempts && (response.status === 429 || response.status >= 500)) {
-        await sleep(500, init.signal);
-        continue;
-      }
-      throw apiError(payload, response.status);
-    }
-    throw new Error("方舟媒体请求失败。");
   }
 
   private async download(

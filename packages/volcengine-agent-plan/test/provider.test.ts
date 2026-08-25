@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { HttpRequestError } from "@volcengine/sdk-core";
 import { createAgentPlanProvider, login } from "../extensions/index.ts";
-import { fetchPlanModels, signPlanModelRequest } from "../extensions/models.ts";
+import {
+  fetchPlanModels,
+  ListArkAgentPlanModelCommand,
+  type PlanModelClientFactory,
+} from "../extensions/models.ts";
 
 function context(secretAccessKey = "secret-key") {
   return {
@@ -44,38 +49,33 @@ test("stored credentials take precedence over environment variables", async () =
   assert.equal(auth?.env?.VOLCENGINE_SECRET_ACCESS_KEY, "secret-key");
 });
 
-test("signs the official Agent Plan control-plane request", () => {
-  const signed = signPlanModelRequest(
-    "ListArkAgentPlanModel",
-    "{}",
-    "access-key",
-    "secret-key",
-    new Date("2026-06-02T08:55:37Z"),
-  );
-  assert.equal(signed.xDate, "20260602T085537Z");
-  assert.match(signed.authorization, /Credential=access-key\/20260602\/cn-beijing\/ark\/request/);
-  assert.doesNotMatch(signed.authorization, /secret-key/);
-});
-
 test("loads only model IDs returned by ListArkAgentPlanModel", async () => {
-  let requestedUrl = "";
-  const models = await fetchPlanModels(context(), async (url, init) => {
-    requestedUrl = String(url);
-    assert.equal(init?.method, "POST");
-    assert.equal(init?.body, "{}");
-    return new Response(JSON.stringify({
-      Result: {
-        Datas: [
-          { ModelID: "deepseek-v4-pro" },
-          { ModelID: "new-agent-model" },
-        ],
+  const factory: PlanModelClientFactory = (credentials) => {
+    assert.deepEqual(credentials, {
+      accessKeyId: "access-key",
+      secretAccessKey: "secret-key",
+    });
+    return {
+      async send(command, options) {
+        assert.ok(command instanceof ListArkAgentPlanModelCommand);
+        assert.deepEqual(command.input, {});
+        assert.equal(
+          ListArkAgentPlanModelCommand.metaPath,
+          "/ListArkAgentPlanModel/2024-01-01/ark/post/application_json/",
+        );
+        assert.equal(options.abortSignal.aborted, false);
+        return {
+          Result: {
+            Datas: [
+              { ModelID: "deepseek-v4-pro" },
+              { ModelID: "new-agent-model" },
+            ],
+          },
+        };
       },
-    }));
-  });
-  assert.equal(
-    requestedUrl,
-    "https://ark.cn-beijing.volcengineapi.com/?Action=ListArkAgentPlanModel&Version=2024-01-01",
-  );
+    };
+  };
+  const models = await fetchPlanModels(context(), factory);
   assert.deepEqual(models.map((model) => model.id), ["deepseek-v4-pro", "new-agent-model"]);
   assert.equal(models[0]?.provider, "volcengine-agent-plan");
   assert.equal(models[0]?.compat?.maxTokensField, "max_tokens");
@@ -86,26 +86,52 @@ test("loads only model IDs returned by ListArkAgentPlanModel", async () => {
 test("accepts an empty official catalog", async () => {
   const models = await fetchPlanModels(
     context(),
-    async () => new Response(JSON.stringify({ Result: { Datas: [] } })),
+    () => ({ async send() { return { Result: { Datas: [] } }; } }),
   );
   assert.deepEqual(models, []);
 });
 
 test("5xx, API errors and malformed responses expose no credentials", async () => {
   await assert.rejects(
-    fetchPlanModels(context("super-secret"), async () => new Response("", { status: 503 })),
+    fetchPlanModels(context("super-secret"), () => ({
+      async send() { throw new HttpRequestError("ApiException", "SDK error", 503); },
+    })),
     (error: Error) => !error.message.includes("super-secret") && /503/.test(error.message),
   );
   await assert.rejects(
-    fetchPlanModels(context(), async () => new Response(JSON.stringify({
-      ResponseMetadata: { Error: { Code: "AccessDenied" } },
-    }))),
+    fetchPlanModels(context(), () => ({
+      async send() {
+        throw new HttpRequestError("ApiException", "SDK error", undefined, {
+          ResponseMetadata: { Error: { Code: "AccessDenied" } },
+        });
+      },
+    })),
     /AccessDenied/,
   );
   await assert.rejects(
-    fetchPlanModels(context(), async () => new Response(JSON.stringify({ unexpected: true }))),
+    fetchPlanModels(context(), () => ({ async send() { return { Result: {} }; } })),
     /格式已变化/,
   );
+});
+
+test("skips the client when networking is disabled and forwards cancellation", async () => {
+  let created = false;
+  assert.deepEqual(await fetchPlanModels(
+    { ...context(), allowNetwork: false },
+    () => { created = true; throw new Error("unexpected"); },
+  ), []);
+  assert.equal(created, false);
+
+  const controller = new AbortController();
+  controller.abort();
+  const reason = controller.signal.reason;
+  await assert.rejects(fetchPlanModels(
+    { ...context(), signal: controller.signal },
+    () => ({ async send(_command, options) {
+      assert.equal(options.abortSignal.aborted, true);
+      throw new HttpRequestError("Exception", "HTTP request failed: canceled");
+    } }),
+  ), (error) => error === reason);
 });
 
 test("provider registration exposes an empty dynamic provider", () => {

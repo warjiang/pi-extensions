@@ -77,16 +77,18 @@ export function migrateCachedModels(
 export async function login(interaction: AuthInteraction): Promise<ApiKeyCredential> {
   const key = await interaction.prompt({
     type: "secret",
-    message: "方舟 API Key（用于推理）",
-    placeholder: "ark-...",
+    message: "Enter your Volcengine Ark API Key:",
+    placeholder: "Volcengine Ark API Key",
   });
   const accessKeyId = await interaction.prompt({
     type: "secret",
-    message: "火山引擎 Access Key ID（用于拉取接入点）",
+    message: "Enter your Volcengine Ark Access Key ID:",
+    placeholder: "Volcengine Ark Access Key ID",
   });
   const secretAccessKey = await interaction.prompt({
     type: "secret",
-    message: "火山引擎 Secret Access Key（用于拉取接入点）",
+    message: "Enter your Volcengine Ark Secret Access Key:",
+    placeholder: "Volcengine Ark Secret Access Key",
   });
   return {
     type: "api_key",
@@ -109,7 +111,7 @@ async function resolveField(
 export function createVolcengineProvider() {
   const provider = createProvider<"openai-completions">({
     id: PROVIDER_ID,
-    name: "Volcengine Ark（火山方舟）",
+    name: "Volcengine Ark",
     baseUrl: BASE_URL,
     auth: {
       apiKey: {

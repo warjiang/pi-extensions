@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
+  type ArkMediaClient,
   resolveMediaOutputDir,
   VolcengineMediaService,
 } from "../extensions/media-service.ts";
@@ -20,19 +21,28 @@ test("generates, downloads and returns image data without persisting input base6
   const inputPath = join(cwd, "reference.png");
   await writeFile(inputPath, Buffer.from("reference"));
   let requestBody: Record<string, unknown> | undefined;
+  const client: ArkMediaClient = {
+    async generateImages(request) {
+      requestBody = { ...request };
+      return {
+        model: "seedream",
+        data: [{ url: "https://download.example/image" }],
+      };
+    },
+    async createContentGenerationTask() {
+      throw new Error("unexpected video request");
+    },
+    async getContentGenerationTask() {
+      throw new Error("unexpected video request");
+    },
+  };
   const service = new VolcengineMediaService({
     apiKey: "api-key",
     cwd,
     outputDir: join(cwd, "output"),
-    fetch: async (input, init) => {
+    client,
+    fetch: async (input) => {
       const url = String(input);
-      if (url.endsWith("/images/generations")) {
-        requestBody = JSON.parse(String(init?.body));
-        return new Response(JSON.stringify({
-          model: "seedream",
-          data: [{ url: "https://download.example/image" }],
-        }));
-      }
       assert.equal(url, "https://download.example/image");
       return new Response(Buffer.from("generated-image"), {
         headers: { "content-type": "image/png" },
@@ -84,25 +94,31 @@ test("creates a video task with frame roles and downloads a completed task", asy
   t.after(() => rm(cwd, { recursive: true, force: true }));
   let createBody: Record<string, unknown> | undefined;
   let statusCalls = 0;
+  const client: ArkMediaClient = {
+    async generateImages() {
+      throw new Error("unexpected image request");
+    },
+    async createContentGenerationTask(request) {
+      createBody = { ...request };
+      return { id: "task-1", status: "queued" };
+    },
+    async getContentGenerationTask(taskId) {
+      statusCalls += 1;
+      return {
+        id: taskId,
+        model: "seedance",
+        status: "succeeded",
+        content: { video_url: "https://download.example/video" },
+      };
+    },
+  };
   const service = new VolcengineMediaService({
     apiKey: "api-key",
     cwd,
     outputDir: join(cwd, "output"),
-    fetch: async (input, init) => {
+    client,
+    fetch: async (input) => {
       const url = String(input);
-      if (url.endsWith("/contents/generations/tasks") && init?.method === "POST") {
-        createBody = JSON.parse(String(init.body));
-        return new Response(JSON.stringify({ id: "task-1", status: "queued" }));
-      }
-      if (url.endsWith("/contents/generations/tasks/task-1")) {
-        statusCalls += 1;
-        return new Response(JSON.stringify({
-          id: "task-1",
-          model: "seedance",
-          status: "succeeded",
-          content: { video_url: "https://download.example/video" },
-        }));
-      }
       assert.equal(url, "https://download.example/video");
       return new Response(Buffer.from("generated-video"), {
         headers: { "content-type": "video/mp4" },
@@ -138,22 +154,32 @@ test("creates a video task with frame roles and downloads a completed task", asy
 test("returns pending tasks on timeout and preserves completed task URLs on download failure", async (t) => {
   const cwd = await mkdtemp(join(tmpdir(), "volcengine-media-recovery-"));
   t.after(() => rm(cwd, { recursive: true, force: true }));
+  const client: ArkMediaClient = {
+    async generateImages() {
+      throw new Error("unexpected image request");
+    },
+    async createContentGenerationTask() {
+      throw new Error("unexpected create request");
+    },
+    async getContentGenerationTask(taskId) {
+      if (taskId === "task-running") {
+        return { id: taskId, status: "running" };
+      }
+      return {
+        id: taskId,
+        status: "succeeded",
+        content: { video_url: "https://download.example/missing" },
+      };
+    },
+  };
   const service = new VolcengineMediaService({
     apiKey: "api-key",
     cwd,
     outputDir: join(cwd, "output"),
+    client,
     fetch: async (input) => {
       const url = String(input);
-      if (url.endsWith("/contents/generations/tasks/task-running")) {
-        return new Response(JSON.stringify({ id: "task-running", status: "running" }));
-      }
-      if (url.endsWith("/contents/generations/tasks/task-done")) {
-        return new Response(JSON.stringify({
-          id: "task-done",
-          status: "succeeded",
-          content: { video_url: "https://download.example/missing" },
-        }));
-      }
+      assert.equal(url, "https://download.example/missing");
       return new Response("missing", { status: 404 });
     },
   });
@@ -170,4 +196,37 @@ test("returns pending tasks on timeout and preserves completed task URLs on down
   assert.equal(metadata.output_url, "https://download.example/missing");
   assert.match(metadata.download_error, /HTTP 404/);
   assert.equal(typeof metadata.generated_at, "string");
+});
+
+test("retries a transient transport failure when reading a video task", async (t) => {
+  const cwd = await mkdtemp(join(tmpdir(), "volcengine-media-retry-"));
+  t.after(() => rm(cwd, { recursive: true, force: true }));
+  let attempts = 0;
+  const client: ArkMediaClient = {
+    async generateImages() {
+      throw new Error("unexpected image request");
+    },
+    async createContentGenerationTask() {
+      throw new Error("unexpected create request");
+    },
+    async getContentGenerationTask(taskId) {
+      attempts += 1;
+      if (attempts === 1) {
+        const error = new Error("socket reset");
+        error.name = "AxiosError";
+        throw error;
+      }
+      return { id: taskId, status: "running" };
+    },
+  };
+  const service = new VolcengineMediaService({
+    apiKey: "api-key",
+    cwd,
+    outputDir: join(cwd, "output"),
+    client,
+  });
+
+  const task = await service.getVideoTask("task-retry");
+  assert.equal(task.status, "running");
+  assert.equal(attempts, 2);
 });
