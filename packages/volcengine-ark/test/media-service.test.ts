@@ -4,10 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
-  type ArkMediaClient,
   resolveMediaOutputDir,
   VolcengineMediaService,
 } from "../extensions/media-service.ts";
+import type { ArkMediaClient } from "../extensions/types.ts";
 
 test("resolves the default and configured media directories", () => {
   assert.equal(resolveMediaOutputDir("/work"), "/work/.pi/media");

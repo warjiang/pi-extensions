@@ -1,68 +1,15 @@
 import { readFileSync } from "node:fs";
 import type { ModelCost } from "@earendil-works/pi-ai";
 import { ZERO_COST } from "./constants.ts";
+import type {
+  EndpointModelInfo,
+  FoundationModelInfo,
+  ManifestModel,
+  ModelManifest,
+  ResolvedModelMetadata,
+} from "./types.ts";
 
 const PRICE_SCALE = 1_000_000;
-
-export interface FoundationModelInfo {
-  Name?: string;
-  DisplayName?: string;
-  PrimaryVersion?: string;
-  FoundationModelTag?: {
-    Domains?: string[];
-    TaskTypes?: string[];
-  };
-}
-
-export interface EndpointModelInfo {
-  Id?: string;
-  EndpointModelType?: string;
-  ModelReference?: {
-    FoundationModel?: {
-      Name?: string;
-      ModelVersion?: string;
-    };
-  };
-}
-
-export interface ManifestPriceTier {
-  inputTokensAbove: number;
-  inputCostPerToken: number;
-  outputCostPerToken: number;
-}
-
-export interface ManifestModel {
-  mode?: string;
-  maxInputTokens?: number;
-  maxOutputTokens?: number;
-  maxTokens?: number;
-  supportsVision?: boolean;
-  supportsReasoning?: boolean;
-  supportsFunctionCalling?: boolean;
-  inputCostPerToken?: number;
-  outputCostPerToken?: number;
-  tieredPricing?: ManifestPriceTier[];
-}
-
-interface ModelManifest {
-  source: {
-    repository: string;
-    ref: string;
-    commit: string;
-    generatedAt: string;
-  };
-  models: Record<string, ManifestModel>;
-}
-
-export interface ResolvedModelMetadata {
-  kind: "chat" | "image" | "video" | "other";
-  foundation?: FoundationModelInfo;
-  manifestId?: string;
-  manifest?: ManifestModel;
-  taskTypes: readonly string[];
-  domains: readonly string[];
-  diagnostics: readonly string[];
-}
 
 const manifest = JSON.parse(
   readFileSync(new URL("./data/model-manifest.json", import.meta.url), "utf8"),

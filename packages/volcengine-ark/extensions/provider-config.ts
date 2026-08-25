@@ -2,12 +2,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { PROVIDER_ID } from "./constants.ts";
-
-export interface VolcengineProviderConfig {
-  imageModel?: string;
-  videoModel?: string;
-  mediaDir?: string;
-}
+import type { VolcengineProviderConfig } from "./types.ts";
 
 export const PROVIDER_CONFIG_PATH = join(
   getAgentDir(),

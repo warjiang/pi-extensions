@@ -6,6 +6,10 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import type {
+  ManifestPriceTier,
+  ModelManifestUpdateOptions,
+} from "../extensions/types.ts";
 
 const execFileAsync = promisify(execFile);
 const REPOSITORY = "BerriAI/litellm";
@@ -15,18 +19,6 @@ const OUTPUT_FILE = resolve(
   dirname(fileURLToPath(import.meta.url)),
   "../extensions/data/model-manifest.json",
 );
-
-interface Options {
-  input?: string;
-  commit?: string;
-  output?: string;
-}
-
-interface ManifestPriceTier {
-  inputTokensAbove: number;
-  inputCostPerToken: number;
-  outputCostPerToken: number;
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -55,8 +47,8 @@ function compactRecord(value: Record<string, unknown>): Record<string, unknown> 
   );
 }
 
-function parseArguments(argv: string[]): Options {
-  const options: Options = {};
+function parseArguments(argv: string[]): ModelManifestUpdateOptions {
+  const options: ModelManifestUpdateOptions = {};
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === "--input") options.input = argv[++index];

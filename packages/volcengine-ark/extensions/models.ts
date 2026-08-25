@@ -3,14 +3,11 @@ import type { Model, RefreshModelsContext } from "@earendil-works/pi-ai";
 import {
   ARKClient,
   ListEndpointsCommand,
-  type ListEndpointsCommandOutput,
   ListFoundationModelsCommand,
-  type ListFoundationModelsCommandOutput,
 } from "@volcengine/ark";
 import {
   buildRequestConfigFromMetaPath,
   Command,
-  type CommandOutput,
 } from "@volcengine/sdk-core";
 import {
   BASE_URL,
@@ -24,23 +21,19 @@ import {
 } from "./constants.ts";
 import {
   createFoundationModelIndex,
-  type FoundationModelInfo,
   modelCost,
   resolveModelMetadata,
 } from "./model-manifest.ts";
-
-type InnerDescribeModelEndpointsRequest =
-  ConstructorParameters<typeof ListEndpointsCommand>[0];
-type InnerDescribeModelEndpointsResponse =
-  ListEndpointsCommandOutput extends CommandOutput<infer Response> ? Response : never;
-type Endpoint = NonNullable<InnerDescribeModelEndpointsResponse["Items"]>[number];
-type InnerDescribeModelEndpointsCommandOutput =
-  CommandOutput<InnerDescribeModelEndpointsResponse>;
-type ListFoundationModelsResponse =
-  ListFoundationModelsCommandOutput extends CommandOutput<infer Response> ? Response : never;
-type FoundationModel =
-  NonNullable<ListFoundationModelsResponse["Items"]>[number];
-type FoundationModelIndex = ReadonlyMap<string, readonly FoundationModelInfo[]>;
+import type {
+  Endpoint,
+  FoundationModel,
+  FoundationModelIndex,
+  FoundationModelInfo,
+  InnerDescribeModelEndpointsCommandOutput,
+  InnerDescribeModelEndpointsRequest,
+  VolcengineEndpointModel,
+  VolcengineMediaModel,
+} from "./types.ts";
 
 export class InnerDescribeModelEndpointsCommand extends Command<
   InnerDescribeModelEndpointsRequest,
@@ -56,19 +49,6 @@ export class InnerDescribeModelEndpointsCommand extends Command<
       InnerDescribeModelEndpointsCommand.metaPath,
     );
   }
-}
-
-export type VolcengineEndpointModel = Model<"openai-completions"> & {
-  endpointId: string;
-};
-export interface VolcengineMediaModel {
-  inferenceId: string;
-  name: string;
-  kind: "image" | "video";
-  source: "built-in" | "custom";
-  taskTypes?: readonly string[];
-  domains?: readonly string[];
-  manifestId?: string;
 }
 
 export let cachedMediaModels: readonly VolcengineMediaModel[] = [];

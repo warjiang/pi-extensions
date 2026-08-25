@@ -1,15 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { extname, isAbsolute, join, resolve } from "node:path";
-import {
-  ArkRuntimeClient,
-  type CreateContentGenerationContentItem,
-  type CreateContentGenerationTaskRequest,
-  type GenerateImagesRequest,
-  type GetContentGenerationTaskResponse,
-  type Image,
-  type ImagesResponse,
-} from "@volcengine/ark-runtime";
+import { ArkRuntimeClient } from "@volcengine/ark-runtime";
 import {
   BASE_URL,
   IMAGE_GENERATION_TIMEOUT_MS,
@@ -17,91 +9,19 @@ import {
   MEDIA_REQUEST_TIMEOUT_MS,
   TERMINAL_VIDEO_STATES,
 } from "./constants.ts";
-
-export interface GeneratedFile {
-  path: string;
-  mimeType: string;
-  data: string;
-  sourceUrl?: string;
-}
-
-export interface ImageGenerationRequest {
-  model: string;
-  prompt: string;
-  referenceImages?: readonly string[];
-  size?: string;
-  count?: number;
-  seed?: number;
-  watermark?: boolean;
-  outputFormat?: "jpeg" | "png";
-}
-
-export interface ImageGenerationResult {
-  model: string;
-  files: GeneratedFile[];
-  response: unknown;
-  metadataPath: string;
-}
-
-export interface VideoGenerationRequest {
-  model: string;
-  prompt: string;
-  firstFrame?: string;
-  lastFrame?: string;
-  ratio?: string;
-  resolution?: string;
-  duration?: number;
-  seed?: number;
-  watermark?: boolean;
-  generateAudio?: boolean;
-}
-
-export interface VideoTask {
-  id: string;
-  model?: string;
-  status: string;
-  outputUrl?: string;
-  lastFrameUrl?: string;
-  error?: { code?: string; message?: string };
-  request?: unknown;
-  raw: unknown;
-}
-
-export interface DownloadedVideoTask extends VideoTask {
-  localPath?: string;
-  metadataPath?: string;
-  downloadError?: string;
-}
-
-export interface MediaServiceOptions {
-  apiKey: string;
-  baseUrl?: string;
-  outputDir: string;
-  cwd: string;
-  fetch?: typeof fetch;
-  client?: ArkMediaClient;
-}
-
-export interface ArkMediaClient {
-  generateImages(
-    request: GenerateImagesRequest,
-    options?: { signal?: AbortSignal },
-  ): Promise<Pick<ImagesResponse, "model"> & {
-    data: Array<Partial<Pick<Image, "url" | "b64_json">>>;
-  }>;
-  createContentGenerationTask(
-    request: CreateContentGenerationTaskRequest,
-    options?: { signal?: AbortSignal },
-  ): ReturnType<ArkRuntimeClient["createContentGenerationTask"]>;
-  getContentGenerationTask(
-    taskId: string,
-    options?: { signal?: AbortSignal },
-  ): Promise<
-    Pick<GetContentGenerationTaskResponse, "id" | "status">
-    & Partial<Pick<GetContentGenerationTaskResponse, "model" | "error">>
-    & { content?: Partial<GetContentGenerationTaskResponse["content"]> }
-  >;
-}
+import type {
+  ArkMediaClient,
+  CreateContentGenerationContentItem,
+  CreateContentGenerationTaskRequest,
+  DownloadedVideoTask,
+  GeneratedFile,
+  GenerateImagesRequest,
+  ImageGenerationRequest,
+  ImageGenerationResult,
+  MediaServiceOptions,
+  VideoGenerationRequest,
+  VideoTask,
+} from "./types.ts";
 
 function createArkMediaClient(apiKey: string, baseUrl: string): ArkMediaClient {
   const config = {

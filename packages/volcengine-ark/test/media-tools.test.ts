@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { VolcengineMediaModel } from "../extensions/models.ts";
 import { chooseMediaModel } from "../extensions/media-tools.ts";
+import type { VolcengineMediaModel } from "../extensions/types.ts";
 
 const models: readonly VolcengineMediaModel[] = [
   {

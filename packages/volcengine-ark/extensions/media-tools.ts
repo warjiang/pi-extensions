@@ -9,28 +9,22 @@ import {
 } from "./constants.ts";
 import {
   cachedMediaModels,
-  type VolcengineMediaModel,
 } from "./models.ts";
 import {
   resolveMediaOutputDir,
-  type DownloadedVideoTask,
-  type VideoTask,
   VolcengineMediaService,
 } from "./media-service.ts";
 import {
   readProviderConfig,
   updateProviderConfig,
-  type VolcengineProviderConfig,
 } from "./provider-config.ts";
-
-interface MediaToolDetails {
-  kind: "image" | "video";
-  model?: string;
-  taskId?: string;
-  status?: string;
-  localPaths?: string[];
-  metadataPath?: string;
-}
+import type {
+  DownloadedVideoTask,
+  MediaToolDetails,
+  VideoTask,
+  VolcengineMediaModel,
+  VolcengineProviderConfig,
+} from "./types.ts";
 
 async function refreshMediaModels(
   ctx: ExtensionContext,

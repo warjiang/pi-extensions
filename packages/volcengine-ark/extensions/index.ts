@@ -19,6 +19,7 @@ import { registerMediaTools } from "./media-tools.ts";
 import { displayModelId, fetchEndpointModels } from "./models.ts";
 
 export { BASE_URL, PROVIDER_ID } from "./constants.ts";
+export type * from "./types.ts";
 
 export function endpointIdFromDisplayId(id: string): string {
   const separator = id.lastIndexOf("@");
