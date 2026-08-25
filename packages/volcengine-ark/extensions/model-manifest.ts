@@ -29,6 +29,7 @@ for (const [id, model] of Object.entries(manifest.models)) {
   const aliases = [
     id,
     model.name,
+    model.displayName,
     model.name && model.primaryVersion
       ? `${model.name}-${model.primaryVersion}`
       : undefined,
@@ -78,6 +79,8 @@ const OTHER_TAGS = new Set([
   "向量",
   "向量化",
 ]);
+const IMAGE_MODEL_FAMILIES = new Set(["seedream"]);
+const VIDEO_MODEL_FAMILIES = new Set(["seedance"]);
 
 // Normalize tag formatting before comparing it with the known tag sets.
 // It separates camelCase words, lowercases the value, converts separators to
@@ -98,9 +101,9 @@ function normalizeTag(value: string): string {
 
 // Convert a model ID, name, version, or alias into a stable manifest lookup key.
 // This removes a leading Volcengine provider prefix, converts the value to
-// lowercase, replaces non-alphanumeric separators with hyphens, and trims
-// leading or trailing hyphens. Equivalent values therefore produce the same
-// key when indexing or querying manifestEntries.
+// lowercase, preserves Unicode letters and numbers, replaces other separators
+// with hyphens, and trims leading or trailing hyphens. Equivalent values
+// therefore produce the same key when indexing or querying manifestEntries.
 //
 // Examples:
 // - "Volcengine/Doubao_Seed 2.0-Pro-260215"
@@ -111,12 +114,14 @@ function normalizeTag(value: string): string {
 //   -> "v3-2"
 // - "  Seedream@5.0  "
 //   -> "seedream-5-0"
+// - "DeepSeek-V4-Pro正式版"
+//   -> "deepseek-v4-pro正式版"
 export function normalizeModelKey(value: string): string {
   return value
     .trim()
     .toLowerCase()
     .replace(/^volcengine[/:]/, "")
-    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
     .replace(/^-+|-+$/g, "");
 }
 
@@ -125,6 +130,20 @@ function classifyTags(values: readonly string[]): ResolvedModelMetadata["kind"] 
   if (tags.some((tag) => VIDEO_TAGS.has(tag))) return "video";
   if (tags.some((tag) => IMAGE_TAGS.has(tag))) return "image";
   if (tags.some((tag) => OTHER_TAGS.has(tag))) return "other";
+  return undefined;
+}
+
+// Recognize Ark media model families when an endpoint is missing manifest tags
+// and EndpointModelType. Family names are matched as normalized ID tokens, so
+// "doubao-seedance-2-5" is video and "doubao-seedream-5-0" is image.
+function classifyModelFamily(
+  values: readonly (string | undefined)[],
+): ResolvedModelMetadata["kind"] | undefined {
+  const tokens = values.flatMap((value) =>
+    value ? normalizeModelKey(value).split("-") : []
+  );
+  if (tokens.some((token) => VIDEO_MODEL_FAMILIES.has(token))) return "video";
+  if (tokens.some((token) => IMAGE_MODEL_FAMILIES.has(token))) return "image";
   return undefined;
 }
 
@@ -214,6 +233,9 @@ export function resolveModelMetadata(
   if (!selected.match && selected.ambiguousIds.length === 0) {
     selected = findManifest([reference?.Name]);
   }
+  if (!selected.match && selected.ambiguousIds.length === 0) {
+    selected = findManifest([endpoint.Name]);
+  }
   if (selected.ambiguousIds.length) {
     diagnostics.push(`Ambiguous model manifest entries: ${selected.ambiguousIds.join(", ")}`);
   }
@@ -226,6 +248,12 @@ export function resolveModelMetadata(
   const kind = classifyTags([...taskTypes, ...domains])
     ?? classifyTags(endpoint.EndpointModelType ? [endpoint.EndpointModelType] : [])
     ?? classifyTags(matched?.model.mode ? [matched.model.mode] : [])
+    ?? classifyModelFamily([
+      endpoint.Id,
+      reference?.Name,
+      matched?.model.name,
+      matched?.model.displayName,
+    ])
     ?? "chat";
 
   return {

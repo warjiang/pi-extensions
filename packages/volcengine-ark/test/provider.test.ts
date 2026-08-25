@@ -158,11 +158,14 @@ test("maps only running chat endpoints", () => {
       FoundationModel: { Name: "DeepSeek V3.2", ModelVersion: "251201" },
     },
   });
-  assert.equal(model?.id, "deepseek-endpoint");
+  assert.equal(model?.id, "deepseek-v3.2");
   assert.equal(model?.endpointId, "ep-ok");
-  assert.equal(model?.name, "DeepSeek endpoint");
+  assert.equal(model?.name, "DeepSeek-V3.2");
   assert.equal(model?.reasoning, true);
-  assert.equal(model?.contextWindow, 98_304);
+  assert.equal(
+    model?.contextWindow,
+    getModelManifest().models["deepseek-v3-2-251201"]?.maxInputTokens,
+  );
   assert.equal(model?.maxTokens, 32_768);
 });
 
@@ -185,6 +188,19 @@ test("classifies and preserves image and video inference ids", () => {
   assert.equal(imageMetadata.kind, "image");
   assert.equal(videoMetadata.kind, "video");
   assert.equal(customEndpointToModel(customVideo), undefined);
+  assert.equal(builtInEndpointToModel({
+    Id: "doubao-seedance-2-5",
+    Name: "doubao-seedance-2-5",
+    Status: "Running",
+  }), undefined);
+  assert.equal(customEndpointToModel({
+    Id: "ep-seedream",
+    Name: "doubao-seedream-5-0",
+    Status: "Running",
+    ModelReference: {
+      FoundationModel: { Name: "doubao-seedream-5-0" },
+    },
+  }), undefined);
   assert.ok(customEndpointToModel({
     Id: "ep-chat",
     Name: "My image assistant",
@@ -204,16 +220,32 @@ test("maps built-in endpoints with Id as the inference model", () => {
     Status: "Running",
   });
   assert.equal(model?.id, "deepseek-v3-2-251201");
-  assert.equal(model?.name, "DeepSeek V3.2");
+  assert.equal(model?.name, "DeepSeek-V3.2");
   assert.equal(model?.reasoning, true);
   assert.equal(endpointIdFromModel(model!), "deepseek-v3-2-251201");
   assert.equal("endpointId" in model!, false);
+
+  const endpointModel = builtInEndpointToModel({
+    Id: "ep-m-20260312223546-mlbfc",
+    Name: "ep-m-20260312223546-mlbfc",
+    Status: "Running",
+    ModelReference: {
+      FoundationModel: { Name: "DeepSeek V3.2", ModelVersion: "251201" },
+    },
+  });
+  assert.equal(endpointModel?.id, "deepseek-v3.2");
+  assert.equal(endpointModel?.name, "DeepSeek-V3.2");
+  assert.equal(endpointIdFromModel(endpointModel!), "ep-m-20260312223546-mlbfc");
 });
 
 test("normalizes only provider prefixes, case and separators for manifest matching", () => {
   assert.equal(
     normalizeModelKey("Volcengine/Doubao_Seed 2.0-Pro-260215"),
     "doubao-seed-2-0-pro-260215",
+  );
+  assert.equal(
+    normalizeModelKey("DeepSeek-V4-Pro正式版"),
+    "deepseek-v4-pro正式版",
   );
   assert.equal(
     resolveModelMetadata({
@@ -241,6 +273,34 @@ test("matches manifest data through endpoint id and referenced version", () => {
   assert.equal(byReferencedVersion.manifestId, "doubao-seed-2-0-pro-260215");
 });
 
+test("matches a manifest model by its Ark display name", () => {
+  const model = builtInEndpointToModel({
+    Id: "ep-deepseek-v4-pro",
+    Name: "DeepSeek-V4-Pro正式版",
+    Status: "Running",
+  });
+
+  assert.equal(model?.name, "DeepSeek-V4-Pro正式版");
+  assert.equal(
+    model?.contextWindow,
+    getModelManifest().models["deepseek-v4-pro-ga-260813"]?.maxInputTokens,
+  );
+  assert.equal(model?.maxTokens, 384_000);
+});
+
+test("uses the generated Seed Evolving context window metadata", () => {
+  const model = builtInEndpointToModel({
+    Id: "doubao-seed-evolving",
+    Name: "Doubao-Seed-Evolving",
+    Status: "Running",
+  });
+
+  assert.equal(
+    model?.contextWindow,
+    getModelManifest().models["doubao-seed-evolving-latest-version"]?.maxInputTokens,
+  );
+});
+
 test("uses LiteLLM for chat capabilities and pricing", () => {
   const metadata = resolveModelMetadata({
     Id: "ep-pro",
@@ -263,7 +323,10 @@ test("uses LiteLLM for chat capabilities and pricing", () => {
   });
 
   assert.equal(metadata.kind, "chat");
-  assert.equal(model?.contextWindow, 256_000);
+  assert.equal(
+    model?.contextWindow,
+    getModelManifest().models["doubao-seed-2-0-pro-260215"]?.maxInputTokens,
+  );
   assert.equal(model?.maxTokens, 128_000);
   assert.equal(model?.reasoning, true);
   assert.deepEqual(model?.input, ["text", "image"]);
@@ -363,6 +426,60 @@ test("migrates legacy endpoint ids in the persisted model cache", () => {
   );
 });
 
+test("refreshes persisted model capabilities from the current manifest", () => {
+  const stored = migrateCachedModels({
+    checkedAt: 1,
+    models: [{
+      id: "deepseek-v4-pro-260425",
+      name: "DeepSeek-V4-pro",
+      api: "openai-completions",
+      provider: "volcengine",
+      baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+      reasoning: false,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 128_000,
+      maxTokens: 16_384,
+    }],
+  });
+  const model = stored?.models[0];
+  assert.equal(model?.contextWindow, 1_048_576);
+  assert.equal(model?.maxTokens, 384_000);
+  assert.equal(model?.reasoning, true);
+});
+
+test("removes endpoint suffixes and duplicate models from the persisted cache", () => {
+  const base: Omit<Model<"openai-completions">, "id" | "name"> = {
+    api: "openai-completions",
+    provider: "volcengine",
+    baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+    reasoning: false,
+    input: ["text"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 128_000,
+    maxTokens: 16_384,
+  };
+  const stored = migrateCachedModels({
+    checkedAt: 1,
+    models: [
+      {
+        ...base,
+        id: "doubao-seed-code",
+        name: "Doubao Seed Code",
+        endpointId: "ep-first",
+      } as Model<"openai-completions"> & { endpointId: string },
+      {
+        ...base,
+        id: "doubao-seed-code-wtdvx",
+        name: "Doubao Seed Code",
+        endpointId: "ep-second-wtdvx",
+      } as Model<"openai-completions"> & { endpointId: string },
+    ],
+  });
+  assert.deepEqual(stored?.models.map((model) => model.id), ["doubao-seed-code"]);
+  assert.equal(endpointIdFromModel(stored!.models[0]!), "ep-first");
+});
+
 test("maps SDK endpoint responses and treats an empty built-in list as valid", async () => {
   let customCalls = 0;
   const models = await withMockArkClient(async (command) => {
@@ -385,7 +502,7 @@ test("maps SDK endpoint responses and treats an empty built-in list as valid", a
   assert.deepEqual(models.map((model) => model.id), ["ark-endpoint"]);
 });
 
-test("keeps separate custom endpoints for the same model", async () => {
+test("prefers a built-in model over duplicate custom endpoints", async () => {
   let builtInCalls = 0;
   let customCalls = 0;
   const models = await withMockArkClient(async (command) => {
@@ -422,17 +539,34 @@ test("keeps separate custom endpoints for the same model", async () => {
     }));
   assert.equal(builtInCalls, 1);
   assert.equal(customCalls, 1);
-  assert.deepEqual(models.map((model) => model.id), [
-    "deepseek-v4",
-    "deepseek-v4-aaa",
-    "deepseek-v4-bbb",
-  ]);
-  assert.deepEqual(
-    models.slice(1).map(
-      (model) => (model as Model<"openai-completions"> & { endpointId: string }).endpointId,
-    ),
-    ["ep-default-aaa", "ep-project-b-bbb"],
-  );
+  assert.deepEqual(models.map((model) => model.id), ["deepseek-v4"]);
+});
+
+test("collapses duplicate custom endpoints into one model", async () => {
+  const models = await withMockArkClient(async (command) => {
+    if (command instanceof InnerDescribeModelEndpointsCommand) {
+      return { Result: { Items: [] } };
+    }
+    assert.ok(command instanceof ListEndpointsCommand);
+    return {
+      Result: {
+        Items: [
+          { Id: "ep-first", Name: "Doubao Seed Code", Status: "Running" },
+          { Id: "ep-second-wtdvx", Name: "Doubao Seed Code", Status: "Running" },
+        ],
+      },
+    };
+  }, () => fetchEndpointModels({
+      credential: {
+        type: "api_key",
+        env: { VOLCENGINE_ACCESS_KEY_ID: "ak", VOLCENGINE_SECRET_ACCESS_KEY: "sk" },
+      },
+      allowNetwork: true,
+      signal: new AbortController().signal,
+      publish: async () => true,
+    }));
+  assert.deepEqual(models.map((model) => model.id), ["doubao-seed-code"]);
+  assert.equal(endpointIdFromModel(models[0]!), "ep-first");
 });
 
 test("keeps media models separate while publishing chat models only", async () => {
@@ -475,16 +609,18 @@ test("keeps media models separate while publishing chat models only", async () =
       publish: async () => true,
     }));
   assert.deepEqual(models.map((model) => model.id), ["chat-model"]);
-  assert.deepEqual(cachedMediaModels, [
+  assert.deepEqual(cachedMediaModels.map(
+    ({ inferenceId, name, kind, source }) => ({ inferenceId, name, kind, source }),
+  ), [
     {
       inferenceId: "doubao-seedream-5-0-260128",
-      name: "Seedream",
+      name: "Doubao-Seedream-5.0-lite",
       kind: "image",
       source: "built-in",
     },
     {
       inferenceId: "ep-video",
-      name: "Seedance endpoint",
+      name: "Seedance",
       kind: "video",
       source: "custom",
     },

@@ -28,6 +28,7 @@
   "scripts": {
     "dev": "node -e \"console.log('Volcengine Ark debug log: ' + require('node:path').join(require('node:os').tmpdir(), 'volcengine-ark-debug.log'))\" && VOLCENGINE_DEBUG=1 pi -e .",
     "update:manifest": "node scripts/update-model-manifest.ts",
+    "update:manifest:cached": "node scripts/update-model-manifest.ts --use-cache",
     "typecheck": "tsc -p tsconfig.json",
     "test": "node --test test/*.test.ts"
   },

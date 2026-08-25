@@ -1,4 +1,5 @@
 import { appendFileSync } from "node:fs";
+import { isDeepStrictEqual } from "node:util";
 import type { Model, RefreshModelsContext } from "@earendil-works/pi-ai";
 import {
   ARKClient,
@@ -67,9 +68,9 @@ function displayName(
   fallback: string,
   manifestDisplayName?: string,
 ): string {
-  return item.Name
-    || manifestDisplayName
+  return manifestDisplayName
     || item.ModelReference?.FoundationModel?.Name
+    || item.Name
     || fallback;
 }
 
@@ -136,6 +137,36 @@ function endpointToChatModel(
   };
 }
 
+export function applyCurrentManifestMetadata(
+  model: Model<"openai-completions">,
+): Model<"openai-completions"> {
+  const endpointId =
+    (model as Model<"openai-completions"> & { endpointId?: unknown }).endpointId;
+  const metadata = resolveModelMetadata({
+    Id: typeof endpointId === "string" ? endpointId : model.id,
+    Name: model.name,
+  });
+  const manifest = metadata.manifest;
+  if (!manifest) return model;
+  const reasoning = manifest.supportsReasoning ?? false;
+  const refreshed: Model<"openai-completions"> = {
+    ...model,
+    name: manifest.displayName ?? model.name,
+    reasoning,
+    input: manifest.supportsVision ? ["text", "image"] : ["text"],
+    cost: modelCost(manifest),
+    contextWindow: manifest.maxInputTokens ?? DEFAULT_CONTEXT_WINDOW,
+    maxTokens: manifest.maxOutputTokens ?? manifest.maxTokens ?? DEFAULT_MAX_TOKENS,
+    compat: {
+      ...model.compat,
+      supportsDeveloperRole: false,
+      supportsReasoningEffort: reasoning,
+      thinkingFormat: reasoning ? "deepseek" : undefined,
+    },
+  };
+  return isDeepStrictEqual(refreshed, model) ? model : refreshed;
+}
+
 export function customEndpointToModel(
   item: Endpoint,
 ): VolcengineEndpointModel | undefined {
@@ -151,25 +182,14 @@ export function customEndpointToModel(
 export function builtInEndpointToModel(
   item: Endpoint,
 ): Model<"openai-completions"> | undefined {
-  return endpointToChatModel(item);
-}
-
-// Prevent custom endpoint display IDs from colliding with built-in models or one another.
-function uniqueEndpointModelIds(
-  models: VolcengineEndpointModel[],
-  reservedIds: Iterable<string> = [],
-): VolcengineEndpointModel[] {
-  const used = new Set(reservedIds);
-  return models.map((model) => {
-    let id = model.id;
-    if (used.has(id)) {
-      const suffix = model.endpointId.split("-").at(-1) || "endpoint";
-      id = `${id}-${suffix}`;
-      for (let index = 2; used.has(id); index += 1) id = `${model.id}-${suffix}-${index}`;
-    }
-    used.add(id);
-    return id === model.id ? model : { ...model, id };
-  });
+  const model = endpointToChatModel(item);
+  if (!model || !model.id.startsWith("ep-")) return model;
+  const endpointModel: VolcengineEndpointModel = {
+    ...model,
+    endpointId: model.id,
+    id: displayModelId(model.name, model.id),
+  };
+  return endpointModel;
 }
 
 export async function fetchEndpointModels(
@@ -217,10 +237,14 @@ export async function fetchEndpointModels(
   const customModels = customItems
     .map((item) => customEndpointToModel(item))
     .filter((model): model is VolcengineEndpointModel => Boolean(model));
-  const uniqueCustomModels = uniqueEndpointModelIds(
-    customModels,
-    builtInModels.map((model) => model.id),
-  );
+  const builtInModelIds = new Set(builtInModels.map((model) => model.id));
+  const customModelsById = new Map<string, VolcengineEndpointModel>();
+  for (const model of customModels) {
+    if (!builtInModelIds.has(model.id) && !customModelsById.has(model.id)) {
+      customModelsById.set(model.id, model);
+    }
+  }
+  const uniqueCustomModels = [...customModelsById.values()];
   cachedMediaModels = [
     ...new Map(
       [

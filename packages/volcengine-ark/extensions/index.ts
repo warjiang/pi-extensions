@@ -16,7 +16,11 @@ import {
   PROVIDER_NAME,
 } from "./constants.ts";
 import { registerMediaTools } from "./media-tools.ts";
-import { displayModelId, fetchEndpointModels } from "./models.ts";
+import {
+  applyCurrentManifestMetadata,
+  displayModelId,
+  fetchEndpointModels,
+} from "./models.ts";
 
 export { BASE_URL, PROVIDER_ID } from "./constants.ts";
 export type * from "./types.ts";
@@ -59,24 +63,37 @@ export function migrateCachedModels(
   if (!stored) return stored;
   let changed = false;
   const used = new Set<string>();
-  const models = stored.models.map((model) => {
-    if (model.provider !== PROVIDER_ID) return model;
+  const models: Model<Api>[] = [];
+  for (const model of stored.models) {
+    if (model.provider !== PROVIDER_ID || model.api !== "openai-completions") {
+      models.push(model);
+      continue;
+    }
     const endpointId = endpointIdFromModel(model);
-    if (!endpointId.startsWith("ep-")) return model;
-    let id = displayModelId(model.name, endpointId);
+    const id = endpointId.startsWith("ep-")
+      ? displayModelId(model.name, endpointId)
+      : model.id;
     if (used.has(id)) {
-      const suffix = endpointId.split("-").at(-1) || "endpoint";
-      id = `${id}-${suffix}`;
-      for (let index = 2; used.has(id); index += 1) {
-        id = `${displayModelId(model.name, endpointId)}-${suffix}-${index}`;
-      }
+      changed = true;
+      continue;
     }
     used.add(id);
+    const refreshedModel = applyCurrentManifestMetadata(
+      model as Model<"openai-completions">,
+    );
+    if (refreshedModel !== model) changed = true;
+    if (!endpointId.startsWith("ep-")) {
+      models.push(refreshedModel);
+      continue;
+    }
     const currentEndpointId = (model as Model<Api> & { endpointId?: unknown }).endpointId;
-    if (model.id === id && currentEndpointId === endpointId) return model;
+    if (model.id === id && currentEndpointId === endpointId) {
+      models.push(refreshedModel);
+      continue;
+    }
     changed = true;
-    return { ...model, id, endpointId };
-  });
+    models.push({ ...refreshedModel, id, endpointId } as Model<Api>);
+  }
   return changed ? { ...stored, models } : stored;
 }
 

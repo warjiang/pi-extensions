@@ -3,12 +3,87 @@
     "repository": "BerriAI/litellm",
     "ref": "litellm_internal_staging",
     "commit": "31a67561ab23794bd9bdb72489b05f06e10b1c03",
-    "generatedAt": "2026-08-25T07:52:04.734Z"
+    "generatedAt": "2026-08-25T12:17:04.632Z",
+    "arkOperation": "ListFoundationModels"
   },
   "models": {
-    "deepseek-v3-2-251201": {
+    "deepseek-r1-250528": {
+      "name": "deepseek-r1",
+      "displayName": "DeepSeek-R1",
+      "primaryVersion": "250528",
+      "taskTypes": [
+        "Chat"
+      ],
+      "domains": [
+        "LLM"
+      ],
       "mode": "chat",
-      "maxInputTokens": 98304,
+      "maxInputTokens": 65536,
+      "maxOutputTokens": 8192,
+      "maxTokens": 8192,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true
+    },
+    "deepseek-r1-distill-qwen-32b-250120": {
+      "name": "deepseek-r1-distill-qwen-32b",
+      "displayName": "DeepSeek-R1-Distill-Qwen-32B",
+      "primaryVersion": "250120",
+      "taskTypes": [
+        "Chat"
+      ],
+      "domains": [
+        "LLM"
+      ],
+      "mode": "chat",
+      "maxInputTokens": 65536,
+      "maxOutputTokens": 80000,
+      "maxTokens": 80000,
+      "supportsReasoning": true
+    },
+    "deepseek-r1-distill-qwen-7b-250120": {
+      "name": "deepseek-r1-distill-qwen-7b",
+      "displayName": "DeepSeek-R1-Distill-Qwen-7B",
+      "primaryVersion": "250120",
+      "taskTypes": [
+        "Chat"
+      ],
+      "domains": [
+        "LLM"
+      ],
+      "mode": "chat",
+      "maxInputTokens": 65536,
+      "maxOutputTokens": 131072,
+      "maxTokens": 131072
+    },
+    "deepseek-v3-1-terminus": {
+      "name": "deepseek-v3-1",
+      "displayName": "DeepSeek-V3.1",
+      "primaryVersion": "terminus",
+      "taskTypes": [
+        "Chat"
+      ],
+      "domains": [
+        "LLM"
+      ],
+      "mode": "chat",
+      "maxInputTokens": 131072,
+      "maxOutputTokens": 32768,
+      "maxTokens": 32768,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true
+    },
+    "deepseek-v3-2-251201": {
+      "name": "deepseek-v3-2",
+      "displayName": "DeepSeek-V3.2",
+      "primaryVersion": "251201",
+      "taskTypes": [
+        "Chat"
+      ],
+      "domains": [
+        "LLM"
+      ],
+      "mode": "chat",
+      "maxInputTokens": 131072,
       "maxOutputTokens": 32768,
       "maxTokens": 32768,
       "supportsReasoning": true,
@@ -16,44 +91,446 @@
       "inputCostPerToken": 0,
       "outputCostPerToken": 0
     },
-    "doubao-embedding": {
-      "mode": "embedding",
-      "maxInputTokens": 4096,
-      "maxTokens": 4096,
-      "inputCostPerToken": 0,
-      "outputCostPerToken": 0
+    "deepseek-v3-250324": {
+      "name": "deepseek-v3",
+      "displayName": "DeepSeek-V3",
+      "primaryVersion": "250324",
+      "taskTypes": [
+        "Chat"
+      ],
+      "domains": [
+        "LLM"
+      ],
+      "mode": "chat",
+      "maxInputTokens": 65536,
+      "maxOutputTokens": 163840,
+      "maxTokens": 163840,
+      "supportsFunctionCalling": true
     },
-    "doubao-embedding-large": {
-      "mode": "embedding",
-      "maxInputTokens": 4096,
-      "maxTokens": 4096,
-      "inputCostPerToken": 0,
-      "outputCostPerToken": 0
+    "deepseek-v4-flash-260425": {
+      "name": "deepseek-v4-flash",
+      "displayName": "DeepSeek-V4-flash",
+      "primaryVersion": "260425",
+      "taskTypes": [
+        "Chat"
+      ],
+      "domains": [
+        "LLM"
+      ],
+      "mode": "chat",
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 384000,
+      "maxTokens": 384000,
+      "supportsVision": false,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true
     },
-    "doubao-embedding-large-text-240915": {
-      "mode": "embedding",
-      "maxInputTokens": 4096,
-      "maxTokens": 4096,
-      "inputCostPerToken": 0,
-      "outputCostPerToken": 0
+    "deepseek-v4-flash-ga-260731": {
+      "name": "deepseek-v4-flash-ga",
+      "displayName": "DeepSeek-V4-Flash正式版",
+      "primaryVersion": "260731",
+      "domains": [
+        "LLM"
+      ],
+      "mode": "chat",
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 384000,
+      "maxTokens": 384000,
+      "supportsVision": false,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true
+    },
+    "deepseek-v4-pro-260425": {
+      "name": "deepseek-v4-pro",
+      "displayName": "DeepSeek-V4-pro",
+      "primaryVersion": "260425",
+      "taskTypes": [
+        "Chat"
+      ],
+      "domains": [
+        "LLM"
+      ],
+      "mode": "chat",
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 384000,
+      "maxTokens": 384000,
+      "supportsVision": false,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true
+    },
+    "deepseek-v4-pro-ga-260813": {
+      "name": "deepseek-v4-pro-ga",
+      "displayName": "DeepSeek-V4-Pro正式版",
+      "primaryVersion": "260813",
+      "domains": [
+        "LLM"
+      ],
+      "mode": "chat",
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 384000,
+      "maxTokens": 384000,
+      "supportsVision": false,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true
+    },
+    "doubao-1-5-lite-32k-250115": {
+      "name": "doubao-1-5-lite-32k",
+      "displayName": "Doubao-1.5-lite-32k",
+      "primaryVersion": "250115",
+      "taskTypes": [
+        "Chat"
+      ],
+      "domains": [
+        "LLM"
+      ],
+      "maxInputTokens": 32768
+    },
+    "doubao-1-5-pro-256k-250115": {
+      "name": "doubao-1-5-pro-256k",
+      "displayName": "Doubao-1.5-pro-256k",
+      "primaryVersion": "250115",
+      "taskTypes": [
+        "Chat"
+      ],
+      "domains": [
+        "LLM"
+      ],
+      "maxInputTokens": 262144
+    },
+    "doubao-1-5-pro-32k-250115": {
+      "name": "doubao-1-5-pro-32k",
+      "displayName": "Doubao-1.5-pro-32k",
+      "primaryVersion": "250115",
+      "taskTypes": [
+        "Chat"
+      ],
+      "domains": [
+        "LLM"
+      ],
+      "maxInputTokens": 32768
+    },
+    "doubao-1-5-thinking-pro-250415": {
+      "name": "doubao-1-5-thinking-pro",
+      "displayName": "Doubao-1.5-thinking-pro",
+      "primaryVersion": "250415",
+      "taskTypes": [
+        "VisualQuestionAnswering"
+      ],
+      "domains": [
+        "LLM"
+      ],
+      "maxInputTokens": 131072
+    },
+    "doubao-1-5-thinking-vision-pro-250428": {
+      "name": "doubao-1-5-thinking-vision-pro",
+      "displayName": "Doubao-1.5-thinking-vision-pro",
+      "primaryVersion": "250428",
+      "taskTypes": [
+        "VisualQuestionAnswering"
+      ],
+      "domains": [
+        "LLM"
+      ],
+      "maxInputTokens": 131072
+    },
+    "doubao-1-5-ui-tars-250428": {
+      "name": "doubao-1-5-ui-tars",
+      "displayName": "Doubao-1.5-UI-TARS",
+      "primaryVersion": "250428",
+      "taskTypes": [
+        "VisualQuestionAnswering"
+      ],
+      "domains": [
+        "LLM"
+      ],
+      "maxInputTokens": 32768
+    },
+    "doubao-1-5-vision-lite-250315": {
+      "name": "doubao-1-5-vision-lite",
+      "displayName": "Doubao-1.5-vision-lite",
+      "primaryVersion": "250315",
+      "taskTypes": [
+        "VisualQuestionAnswering"
+      ],
+      "domains": [
+        "LLM"
+      ],
+      "maxInputTokens": 131072
+    },
+    "doubao-1-5-vision-pro-250328": {
+      "name": "doubao-1-5-vision-pro",
+      "displayName": "Doubao-1.5-vision-pro",
+      "primaryVersion": "250328",
+      "taskTypes": [
+        "VisualQuestionAnswering"
+      ],
+      "domains": [
+        "LLM"
+      ],
+      "maxInputTokens": 131072
+    },
+    "doubao-1-5-vision-pro-32k-250115": {
+      "name": "doubao-1-5-vision-pro-32k",
+      "displayName": "Doubao-1.5-vision-pro-32k",
+      "primaryVersion": "250115",
+      "taskTypes": [
+        "VisualQuestionAnswering"
+      ],
+      "domains": [
+        "LLM"
+      ],
+      "maxInputTokens": 32768
+    },
+    "doubao-clasi": {
+      "name": "doubao-clasi",
+      "displayName": "Doubao-同声传译",
+      "domains": [
+        "Audio"
+      ]
     },
     "doubao-embedding-large-text-250515": {
+      "name": "doubao-embedding-large",
+      "displayName": "Doubao-embedding-large",
+      "primaryVersion": "text-250515",
+      "taskTypes": [
+        "TextEmbedding"
+      ],
+      "domains": [
+        "Embedding"
+      ],
       "mode": "embedding",
-      "maxInputTokens": 4096,
+      "maxInputTokens": 8096,
       "maxTokens": 4096,
       "inputCostPerToken": 0,
       "outputCostPerToken": 0
     },
     "doubao-embedding-text-240715": {
+      "name": "doubao-embedding",
+      "displayName": "Doubao-embedding",
+      "primaryVersion": "text-240715",
+      "taskTypes": [
+        "TextEmbedding"
+      ],
+      "domains": [
+        "Embedding"
+      ],
       "mode": "embedding",
-      "maxInputTokens": 4096,
+      "maxInputTokens": 2048,
       "maxTokens": 4096,
       "inputCostPerToken": 0,
       "outputCostPerToken": 0
     },
+    "doubao-embedding-vision-251215": {
+      "name": "doubao-embedding-vision",
+      "displayName": "Doubao-embedding-vision",
+      "primaryVersion": "251215",
+      "taskTypes": [
+        "ImageEmbedding",
+        "MultimodalEmbedding",
+        "TextEmbedding"
+      ],
+      "domains": [
+        "Embedding"
+      ]
+    },
+    "doubao-i2i-style": {
+      "name": "doubao-i2i-style",
+      "displayName": "Doubao-图生图模型-AIGC图像风格化",
+      "domains": [
+        "ComputerVision"
+      ]
+    },
+    "doubao-lite-128k-240828": {
+      "name": "doubao-lite-128k",
+      "displayName": "Doubao-lite-128k",
+      "primaryVersion": "240828",
+      "taskTypes": [
+        "Chat"
+      ],
+      "domains": [
+        "LLM"
+      ],
+      "maxInputTokens": 131072
+    },
+    "doubao-lite-32k-240828": {
+      "name": "doubao-lite-32k",
+      "displayName": "Doubao-lite-32k",
+      "primaryVersion": "240828",
+      "taskTypes": [
+        "Chat"
+      ],
+      "domains": [
+        "LLM"
+      ],
+      "maxInputTokens": 32768
+    },
+    "doubao-lite-4k-character-240828": {
+      "name": "doubao-lite-4k",
+      "displayName": "Doubao-lite-4k",
+      "primaryVersion": "character-240828",
+      "taskTypes": [
+        "Chat"
+      ],
+      "domains": [
+        "LLM"
+      ],
+      "maxInputTokens": 4096
+    },
+    "doubao-pro-128k-240628": {
+      "name": "doubao-pro-128k",
+      "displayName": "Doubao-pro-128k",
+      "primaryVersion": "240628",
+      "taskTypes": [
+        "Chat"
+      ],
+      "domains": [
+        "LLM"
+      ],
+      "maxInputTokens": 131072
+    },
+    "doubao-pro-256k-241115": {
+      "name": "doubao-pro-256k",
+      "displayName": "Doubao-pro-256k",
+      "primaryVersion": "241115",
+      "taskTypes": [
+        "Chat"
+      ],
+      "domains": [
+        "LLM"
+      ],
+      "maxInputTokens": 262144
+    },
+    "doubao-pro-32k-241215": {
+      "name": "doubao-pro-32k",
+      "displayName": "Doubao-pro-32k",
+      "primaryVersion": "241215",
+      "taskTypes": [
+        "Chat"
+      ],
+      "domains": [
+        "LLM"
+      ],
+      "maxInputTokens": 32768
+    },
+    "doubao-pro-4k-240515": {
+      "name": "doubao-pro-4k",
+      "displayName": "Doubao-pro-4k",
+      "primaryVersion": "240515",
+      "taskTypes": [
+        "Chat"
+      ],
+      "domains": [
+        "LLM"
+      ],
+      "maxInputTokens": 4096
+    },
+    "doubao-realtime": {
+      "name": "doubao-realtime",
+      "displayName": "Doubao-实时语音交互",
+      "taskTypes": [
+        "SpeechToSpeech"
+      ],
+      "domains": [
+        "Audio"
+      ]
+    },
+    "doubao-seaweed-241128": {
+      "name": "doubao-seaweed",
+      "displayName": "Doubao-视频生成-Seaweed",
+      "primaryVersion": "241128",
+      "domains": [
+        "ComputerVision"
+      ]
+    },
+    "doubao-seed-1-6-251015": {
+      "name": "doubao-seed-1-6",
+      "displayName": "Doubao-Seed-1.6",
+      "primaryVersion": "251015",
+      "taskTypes": [
+        "VisualQuestionAnswering",
+        "Chat"
+      ],
+      "domains": [
+        "LLM"
+      ],
+      "maxInputTokens": 131072
+    },
+    "doubao-seed-1-6-flash-250828": {
+      "name": "doubao-seed-1-6-flash",
+      "displayName": "Doubao-Seed-1.6-flash",
+      "primaryVersion": "250828",
+      "taskTypes": [
+        "VisualQuestionAnswering"
+      ],
+      "domains": [
+        "LLM"
+      ],
+      "maxInputTokens": 262144
+    },
+    "doubao-seed-1-6-lite-251015": {
+      "name": "doubao-seed-1-6-lite",
+      "displayName": "Doubao-Seed-1.6-lite",
+      "primaryVersion": "251015",
+      "taskTypes": [
+        "VisualQuestionAnswering",
+        "Chat"
+      ],
+      "domains": [
+        "LLM"
+      ],
+      "maxInputTokens": 229376
+    },
+    "doubao-seed-1-6-thinking-250715": {
+      "name": "doubao-seed-1-6-thinking",
+      "displayName": "Doubao-Seed-1.6-thinking",
+      "primaryVersion": "250715",
+      "taskTypes": [
+        "Chat",
+        "VisualQuestionAnswering"
+      ],
+      "domains": [
+        "LLM"
+      ],
+      "maxInputTokens": 229376
+    },
+    "doubao-seed-1-6-vision-250815": {
+      "name": "doubao-seed-1-6-vision",
+      "displayName": "Doubao-Seed-1.6-vision",
+      "primaryVersion": "250815",
+      "taskTypes": [
+        "VisualQuestionAnswering"
+      ],
+      "domains": [
+        "LLM"
+      ],
+      "maxInputTokens": 262144
+    },
+    "doubao-seed-1-8-251228": {
+      "name": "doubao-seed-1-8",
+      "displayName": "Doubao-Seed-1.8",
+      "primaryVersion": "251228",
+      "taskTypes": [
+        "Chat",
+        "VisualQuestionAnswering"
+      ],
+      "domains": [
+        "LLM"
+      ],
+      "maxInputTokens": 229376
+    },
     "doubao-seed-2-0-code-preview-260215": {
+      "name": "doubao-seed-2-0-code",
+      "displayName": "Doubao-Seed-2.0-Code",
+      "primaryVersion": "preview-260215",
+      "taskTypes": [
+        "Chat",
+        "VisualQuestionAnswering"
+      ],
+      "domains": [
+        "LLM"
+      ],
       "mode": "chat",
-      "maxInputTokens": 256000,
+      "maxInputTokens": 262144,
       "maxOutputTokens": 128000,
       "maxTokens": 128000,
       "supportsVision": true,
@@ -77,61 +554,44 @@
         }
       ]
     },
-    "doubao-seed-2-0-lite-260215": {
-      "mode": "chat",
-      "maxInputTokens": 256000,
-      "maxOutputTokens": 128000,
-      "maxTokens": 128000,
-      "supportsVision": true,
-      "supportsReasoning": true,
-      "supportsFunctionCalling": true,
-      "tieredPricing": [
-        {
-          "inputTokensAbove": 0,
-          "inputCostPerToken": 8.7e-8,
-          "outputCostPerToken": 5.2e-7
-        },
-        {
-          "inputTokensAbove": 32000,
-          "inputCostPerToken": 1.3e-7,
-          "outputCostPerToken": 7.8e-7
-        },
-        {
-          "inputTokensAbove": 128000,
-          "inputCostPerToken": 2.6e-7,
-          "outputCostPerToken": 0.0000016
-        }
+    "doubao-seed-2-0-lite-260428": {
+      "name": "doubao-seed-2-0-lite",
+      "displayName": "Doubao-Seed-2.0-lite",
+      "primaryVersion": "260428",
+      "taskTypes": [
+        "VisualQuestionAnswering",
+        "Chat"
+      ],
+      "domains": [
+        "LLM"
       ]
     },
-    "doubao-seed-2-0-mini-260215": {
-      "mode": "chat",
-      "maxInputTokens": 256000,
-      "maxOutputTokens": 128000,
-      "maxTokens": 128000,
-      "supportsVision": true,
-      "supportsReasoning": true,
-      "supportsFunctionCalling": true,
-      "tieredPricing": [
-        {
-          "inputTokensAbove": 0,
-          "inputCostPerToken": 2.9e-8,
-          "outputCostPerToken": 2.9e-7
-        },
-        {
-          "inputTokensAbove": 32000,
-          "inputCostPerToken": 5.8e-8,
-          "outputCostPerToken": 5.8e-7
-        },
-        {
-          "inputTokensAbove": 128000,
-          "inputCostPerToken": 1.2e-7,
-          "outputCostPerToken": 0.0000012
-        }
-      ]
+    "doubao-seed-2-0-mini-260428": {
+      "name": "doubao-seed-2-0-mini",
+      "displayName": "Doubao-Seed-2.0-mini",
+      "primaryVersion": "260428",
+      "taskTypes": [
+        "VisualQuestionAnswering",
+        "Chat"
+      ],
+      "domains": [
+        "LLM"
+      ],
+      "maxInputTokens": 262144
     },
     "doubao-seed-2-0-pro-260215": {
+      "name": "doubao-seed-2-0-pro",
+      "displayName": "Doubao-Seed-2.0-pro",
+      "primaryVersion": "260215",
+      "taskTypes": [
+        "Chat",
+        "VisualQuestionAnswering"
+      ],
+      "domains": [
+        "LLM"
+      ],
       "mode": "chat",
-      "maxInputTokens": 256000,
+      "maxInputTokens": 262144,
       "maxOutputTokens": 128000,
       "maxTokens": 128000,
       "supportsVision": true,
@@ -155,7 +615,324 @@
         }
       ]
     },
+    "doubao-seed-2-1-pro-260628": {
+      "name": "doubao-seed-2-1-pro",
+      "displayName": "Doubao-Seed-2.1-pro",
+      "primaryVersion": "260628",
+      "taskTypes": [
+        "Chat",
+        "VisualQuestionAnswering"
+      ],
+      "domains": [
+        "LLM"
+      ],
+      "maxInputTokens": 262144
+    },
+    "doubao-seed-2-1-turbo-260628": {
+      "name": "doubao-seed-2-1-turbo",
+      "displayName": "Doubao-Seed-2.1-turbo",
+      "primaryVersion": "260628",
+      "taskTypes": [
+        "Chat",
+        "VisualQuestionAnswering"
+      ],
+      "domains": [
+        "LLM"
+      ],
+      "maxInputTokens": 262144
+    },
+    "doubao-seed-character-260628": {
+      "name": "doubao-seed-character",
+      "displayName": "Doubao-Seed-Character",
+      "primaryVersion": "260628",
+      "taskTypes": [
+        "Chat"
+      ],
+      "domains": [
+        "LLM"
+      ],
+      "maxInputTokens": 229376
+    },
+    "doubao-seed-code-preview-251028": {
+      "name": "doubao-seed-code",
+      "displayName": "Doubao-Seed-Code",
+      "primaryVersion": "preview-251028",
+      "taskTypes": [
+        "VisualQuestionAnswering",
+        "Chat"
+      ],
+      "domains": [
+        "LLM"
+      ],
+      "maxInputTokens": 229376
+    },
+    "doubao-seed-evolving-latest-version": {
+      "name": "doubao-seed-evolving",
+      "displayName": "Doubao-Seed-Evolving",
+      "primaryVersion": "latest-version",
+      "taskTypes": [
+        "Chat",
+        "VisualQuestionAnswering"
+      ],
+      "domains": [
+        "LLM"
+      ],
+      "maxInputTokens": 262144
+    },
+    "doubao-seed-translation-250915": {
+      "name": "doubao-seed-translation",
+      "displayName": "Doubao-Seed-Translation",
+      "primaryVersion": "250915",
+      "domains": [
+        "LLM"
+      ],
+      "maxInputTokens": 4096
+    },
+    "doubao-seed3d-1-0-250928": {
+      "name": "doubao-seed3d-1-0",
+      "displayName": "Doubao-Seed3D-1.0",
+      "primaryVersion": "250928",
+      "domains": [
+        "ComputerVision"
+      ]
+    },
+    "doubao-seed3d-2-0-260328": {
+      "name": "doubao-seed3d-2-0",
+      "displayName": "Doubao-Seed3D-2.0",
+      "primaryVersion": "260328",
+      "taskTypes": [
+        "ImageTo3D"
+      ],
+      "domains": [
+        "ComputerVision"
+      ]
+    },
+    "doubao-seedance-1-0-lite-i2v-250428": {
+      "name": "doubao-seedance-1-0-lite-i2v",
+      "displayName": "Doubao-Seedance-1.0-lite-i2v",
+      "primaryVersion": "250428",
+      "taskTypes": [
+        "ImageToVideo"
+      ],
+      "domains": [
+        "ComputerVision"
+      ]
+    },
+    "doubao-seedance-1-0-lite-t2v-250428": {
+      "name": "doubao-seedance-1-0-lite-t2v",
+      "displayName": "Doubao-Seedance-1.0-lite-t2v",
+      "primaryVersion": "250428",
+      "taskTypes": [
+        "TextToVideo"
+      ],
+      "domains": [
+        "ComputerVision"
+      ]
+    },
+    "doubao-seedance-1-0-pro-250528": {
+      "name": "doubao-seedance-1-0-pro",
+      "displayName": "Doubao-Seedance-1.0-pro",
+      "primaryVersion": "250528",
+      "taskTypes": [
+        "TextToVideo",
+        "ImageToVideo"
+      ],
+      "domains": [
+        "ComputerVision"
+      ],
+      "maxInputTokens": 32768
+    },
+    "doubao-seedance-1-0-pro-fast-251015": {
+      "name": "doubao-seedance-1-0-pro-fast",
+      "displayName": "Doubao-Seedance-1.0-pro-fast",
+      "primaryVersion": "251015",
+      "taskTypes": [
+        "TextToVideo",
+        "ImageToVideo"
+      ],
+      "domains": [
+        "ComputerVision"
+      ]
+    },
+    "doubao-seedance-1-5-pro-251215": {
+      "name": "doubao-seedance-1-5-pro",
+      "displayName": "Doubao-Seedance-1.5-pro",
+      "primaryVersion": "251215",
+      "taskTypes": [
+        "TextToVideo",
+        "ImageToVideo"
+      ],
+      "domains": [
+        "ComputerVision"
+      ]
+    },
+    "doubao-seedance-2-0-260128": {
+      "name": "doubao-seedance-2-0",
+      "displayName": "Doubao-Seedance-2.0",
+      "primaryVersion": "260128",
+      "taskTypes": [
+        "TextToVideo"
+      ],
+      "domains": [
+        "ComputerVision"
+      ]
+    },
+    "doubao-seedance-2-0-fast-260128": {
+      "name": "doubao-seedance-2-0-fast",
+      "displayName": "Doubao-Seedance-2.0-fast",
+      "primaryVersion": "260128",
+      "taskTypes": [
+        "TextToVideo"
+      ],
+      "domains": [
+        "ComputerVision"
+      ]
+    },
+    "doubao-seedance-2-0-mini-260615": {
+      "name": "doubao-seedance-2-0-mini",
+      "displayName": "Doubao-Seedance-2.0-mini",
+      "primaryVersion": "260615",
+      "taskTypes": [
+        "TextToVideo",
+        "ImageToVideo"
+      ],
+      "domains": [
+        "ComputerVision"
+      ]
+    },
+    "doubao-seedance-2-5-260628": {
+      "name": "doubao-seedance-2-5",
+      "displayName": "Doubao-Seedance-2.5",
+      "primaryVersion": "260628",
+      "taskTypes": [
+        "TextToVideo",
+        "ImageToVideo"
+      ],
+      "domains": [
+        "ComputerVision"
+      ],
+      "maxInputTokens": 262144
+    },
+    "doubao-seededit-3-0-i2i-250628": {
+      "name": "doubao-seededit-3-0-i2i",
+      "displayName": "Doubao-SeedEdit-3.0-i2i",
+      "primaryVersion": "250628",
+      "taskTypes": [
+        "ImageToImage"
+      ],
+      "domains": [
+        "ComputerVision"
+      ]
+    },
+    "doubao-seedream-3-0-t2i-250415": {
+      "name": "doubao-seedream-3-0-t2i",
+      "displayName": "Doubao-Seedream-3.0-t2i",
+      "primaryVersion": "250415",
+      "taskTypes": [
+        "TextToImage"
+      ],
+      "domains": [
+        "ComputerVision"
+      ]
+    },
+    "doubao-seedream-4-0-250828": {
+      "name": "doubao-seedream-4-0",
+      "displayName": "Doubao-Seedream-4.0",
+      "primaryVersion": "250828",
+      "taskTypes": [
+        "TextToImage",
+        "ImageToImage"
+      ],
+      "domains": [
+        "ComputerVision"
+      ]
+    },
+    "doubao-seedream-4-5-251128": {
+      "name": "doubao-seedream-4-5",
+      "displayName": "Doubao-Seedream-4.5",
+      "primaryVersion": "251128",
+      "taskTypes": [
+        "TextToImage",
+        "ImageToImage"
+      ],
+      "domains": [
+        "ComputerVision"
+      ],
+      "maxInputTokens": 262144
+    },
+    "doubao-seedream-5-0-260128": {
+      "name": "doubao-seedream-5-0",
+      "displayName": "Doubao-Seedream-5.0-lite",
+      "primaryVersion": "260128",
+      "taskTypes": [
+        "ImageToImage",
+        "TextToImage"
+      ],
+      "domains": [
+        "ComputerVision"
+      ]
+    },
+    "doubao-seedream-5-0-pro-260628": {
+      "name": "doubao-seedream-5-0-pro",
+      "displayName": "Doubao-Seedream-5.0-pro",
+      "primaryVersion": "260628",
+      "domains": [
+        "ComputerVision"
+      ]
+    },
+    "doubao-smart-router-250928": {
+      "name": "doubao-smart-router",
+      "displayName": "Doubao-Smart-Router",
+      "primaryVersion": "250928",
+      "domains": [
+        "Router"
+      ]
+    },
+    "doubao-t2i-drawing": {
+      "name": "doubao-t2i-drawing",
+      "displayName": "Doubao-文生图模型-智能绘图",
+      "domains": [
+        "ComputerVision"
+      ]
+    },
+    "doubao-t2i-drawinglite": {
+      "name": "doubao-t2i-drawinglite",
+      "displayName": "Doubao-文生图模型-智能绘图漫画版",
+      "domains": [
+        "ComputerVision"
+      ]
+    },
+    "doubao-vision-lite-32k-241015": {
+      "name": "doubao-vision-lite-32k",
+      "displayName": "Doubao-vision-lite-32k",
+      "primaryVersion": "241015",
+      "taskTypes": [
+        "VisualQuestionAnswering"
+      ],
+      "domains": [
+        "LLM"
+      ],
+      "maxInputTokens": 32768
+    },
+    "doubao-vision-pro-32k-241028": {
+      "name": "doubao-vision-pro-32k",
+      "displayName": "Doubao-vision-pro-32k",
+      "primaryVersion": "241028",
+      "taskTypes": [
+        "VisualQuestionAnswering"
+      ],
+      "domains": [
+        "LLM"
+      ],
+      "maxInputTokens": 32768
+    },
     "glm-4-7-251222": {
+      "name": "glm-4-7",
+      "displayName": "GLM-4.7",
+      "primaryVersion": "251222",
+      "domains": [
+        "LLM"
+      ],
       "mode": "chat",
       "maxInputTokens": 204800,
       "maxOutputTokens": 131072,
@@ -165,7 +942,56 @@
       "inputCostPerToken": 0,
       "outputCostPerToken": 0
     },
+    "glm-5-2-260617": {
+      "name": "glm-5-2",
+      "displayName": "GLM-5.2",
+      "primaryVersion": "260617",
+      "domains": [
+        "LLM"
+      ],
+      "mode": "chat",
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 131072,
+      "maxTokens": 131072,
+      "supportsVision": false,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true
+    },
+    "hitem3d-2-0-251223": {
+      "name": "hitem3d-2-0",
+      "displayName": "Hitem3D-2.0",
+      "primaryVersion": "251223",
+      "taskTypes": [
+        "ImageTo3D"
+      ],
+      "domains": [
+        "ComputerVision"
+      ],
+      "maxInputTokens": 204800
+    },
+    "hyper3d-gen2-260112": {
+      "name": "hyper3d-gen2",
+      "displayName": "Hyper3D-Gen2",
+      "primaryVersion": "260112",
+      "taskTypes": [
+        "ImageTo3D",
+        "TextTo3D"
+      ],
+      "domains": [
+        "ComputerVision"
+      ],
+      "maxInputTokens": 204800
+    },
     "kimi-k2-thinking-251104": {
+      "name": "kimi-k2",
+      "displayName": "Kimi-K2",
+      "primaryVersion": "thinking-251104",
+      "taskTypes": [
+        "Chat"
+      ],
+      "domains": [
+        "LLM"
+      ],
       "mode": "chat",
       "maxInputTokens": 229376,
       "maxOutputTokens": 32768,

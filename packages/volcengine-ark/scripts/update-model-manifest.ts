@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import {
   ARKClient,
+  GetFoundationModelVersionCommand,
   ListFoundationModelsCommand,
 } from "@volcengine/ark";
 import {
@@ -17,6 +18,8 @@ import {
 } from "../extensions/constants.ts";
 import type {
   FoundationModel,
+  FoundationModelManifestSource,
+  LiteLLMManifestCache,
   ManifestModel,
   ManifestPriceTier,
   ModelManifestUpdateOptions,
@@ -26,6 +29,10 @@ const execFileAsync = promisify(execFile);
 const REPOSITORY = "BerriAI/litellm";
 const REF = "litellm_internal_staging";
 const SOURCE_FILE = "model_prices_and_context_window.json";
+const CACHE_FILE = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "data/litellm-model-manifest.json",
+);
 const OUTPUT_FILE = resolve(
   dirname(fileURLToPath(import.meta.url)),
   "../extensions/data/model-manifest.json",
@@ -68,7 +75,15 @@ function parseArguments(argv: string[]): ModelManifestUpdateOptions {
     }
     else if (argument === "--commit") options.commit = argv[++index];
     else if (argument === "--output") options.output = argv[++index];
+    else if (argument === "--cache") options.cache = argv[++index];
+    else if (argument === "--use-cache") options.useCache = true;
     else throw new Error(`Unknown argument: ${argument}`);
+  }
+  if (options.input && options.useCache) {
+    throw new Error("--input and --use-cache cannot be used together.");
+  }
+  if (options.commit && options.useCache) {
+    throw new Error("--commit cannot be used with --use-cache; the cache stores its source commit.");
   }
   return options;
 }
@@ -84,22 +99,76 @@ async function resolveCommit(): Promise<string> {
   return commit;
 }
 
-async function loadSource(
-  input: string | undefined,
-  commit: string,
-): Promise<Record<string, unknown>> {
-  const text = input
-    ? await readFile(resolve(input), "utf8")
-    : (await execFileAsync("curl", [
-        "--fail",
-        "--location",
-        "--retry",
-        "3",
-        `https://raw.githubusercontent.com/${REPOSITORY}/${commit}/${SOURCE_FILE}`,
-      ], { maxBuffer: 10 * 1024 * 1024 })).stdout;
+function parseSource(text: string): Record<string, unknown> {
   const source: unknown = JSON.parse(text);
   if (!isRecord(source)) throw new Error("LiteLLM model manifest must be a JSON object.");
   return source;
+}
+
+async function loadCache(cacheFile: string): Promise<{
+  commit: string;
+  source: Record<string, unknown>;
+}> {
+  const parsed: unknown = JSON.parse(await readFile(cacheFile, "utf8"));
+  if (
+    !isRecord(parsed)
+    || !isRecord(parsed.source)
+    || parsed.source.repository !== REPOSITORY
+    || parsed.source.ref !== REF
+    || typeof parsed.source.commit !== "string"
+    || !parsed.source.commit
+    || !isRecord(parsed.models)
+  ) {
+    throw new Error(`Invalid LiteLLM manifest cache: ${cacheFile}`);
+  }
+  return {
+    commit: parsed.source.commit,
+    source: parsed.models,
+  };
+}
+
+async function writeCache(
+  cacheFile: string,
+  commit: string,
+  source: Record<string, unknown>,
+): Promise<void> {
+  const cache: LiteLLMManifestCache = {
+    source: {
+      repository: REPOSITORY,
+      ref: REF,
+      commit,
+      cachedAt: new Date().toISOString(),
+    },
+    models: source,
+  };
+  await mkdir(dirname(cacheFile), { recursive: true });
+  await writeFile(cacheFile, `${JSON.stringify(cache, null, 2)}\n`, "utf8");
+}
+
+async function loadSource(
+  options: ModelManifestUpdateOptions,
+): Promise<{ commit: string; source: Record<string, unknown> }> {
+  const cacheFile = resolve(options.cache ?? CACHE_FILE);
+  if (options.useCache) return loadCache(cacheFile);
+
+  const commit = options.commit ?? await resolveCommit();
+  if (options.input) {
+    return {
+      commit,
+      source: parseSource(await readFile(resolve(options.input), "utf8")),
+    };
+  }
+
+  const text = (await execFileAsync("curl", [
+    "--fail",
+    "--location",
+    "--retry",
+    "3",
+    `https://raw.githubusercontent.com/${REPOSITORY}/${commit}/${SOURCE_FILE}`,
+  ], { maxBuffer: 10 * 1024 * 1024 })).stdout;
+  const source = parseSource(text);
+  await writeCache(cacheFile, commit, source);
+  return { commit, source };
 }
 
 function convertTier(tier: unknown): ManifestPriceTier | undefined {
@@ -113,12 +182,7 @@ function convertTier(tier: unknown): ManifestPriceTier | undefined {
   return { inputTokensAbove: start, inputCostPerToken, outputCostPerToken };
 }
 
-function convertModel(value: Record<string, unknown>): ManifestModel {
-  const tiers = Array.isArray(value.tiered_pricing)
-    ? value.tiered_pricing
-        .map(convertTier)
-        .filter((tier): tier is ManifestPriceTier => tier !== undefined)
-    : undefined;
+function convertCapabilities(value: Record<string, unknown>): ManifestModel {
   return compactRecord({
     mode: typeof value.mode === "string" ? value.mode : undefined,
     maxInputTokens: optionalNumber(value.max_input_tokens),
@@ -127,24 +191,47 @@ function convertModel(value: Record<string, unknown>): ManifestModel {
     supportsVision: optionalBoolean(value.supports_vision),
     supportsReasoning: optionalBoolean(value.supports_reasoning),
     supportsFunctionCalling: optionalBoolean(value.supports_function_calling),
+  });
+}
+
+function convertModel(value: Record<string, unknown>): ManifestModel {
+  const tiers = Array.isArray(value.tiered_pricing)
+    ? value.tiered_pricing
+        .map(convertTier)
+        .filter((tier): tier is ManifestPriceTier => tier !== undefined)
+    : undefined;
+  return compactRecord({
+    ...convertCapabilities(value),
     inputCostPerToken: optionalNumber(value.input_cost_per_token),
     outputCostPerToken: optionalNumber(value.output_cost_per_token),
     ...(tiers?.length ? { tieredPricing: tiers } : {}),
   });
 }
 
+function capabilityScore(model: ManifestModel): number {
+  return [
+    model.mode,
+    model.maxInputTokens,
+    model.maxOutputTokens,
+    model.maxTokens,
+    model.supportsVision,
+    model.supportsReasoning,
+    model.supportsFunctionCalling,
+  ].filter((value) => value !== undefined).length;
+}
+
 async function listFoundationModels(
   input: string | undefined,
-): Promise<FoundationModel[]> {
+): Promise<FoundationModelManifestSource[]> {
   if (input) {
     const parsed: unknown = JSON.parse(await readFile(resolve(input), "utf8"));
-    if (Array.isArray(parsed)) return parsed as FoundationModel[];
+    if (Array.isArray(parsed)) return parsed as FoundationModelManifestSource[];
     if (
       isRecord(parsed)
       && isRecord(parsed.Result)
       && Array.isArray(parsed.Result.Items)
     ) {
-      return parsed.Result.Items as FoundationModel[];
+      return parsed.Result.Items as FoundationModelManifestSource[];
     }
     throw new Error("Ark foundation model input must be an array or an SDK response.");
   }
@@ -177,31 +264,80 @@ async function listFoundationModels(
       || (totalCount !== undefined && models.length >= totalCount)
       || (totalCount === undefined && items.length < PAGE_SIZE)
     ) {
-      return models;
+      break;
     }
   }
+
+  const enriched: FoundationModelManifestSource[] = [];
+  const failedVersionLookups: string[] = [];
+  // ListFoundationModels does not expose context-window limits. Resolve each
+  // primary version once while generating the static manifest so runtime model
+  // discovery never needs model-name-specific overrides or extra API calls.
+  for (let offset = 0; offset < models.length; offset += 10) {
+    const batch = models.slice(offset, offset + 10);
+    enriched.push(...await Promise.all(batch.map(async (model) => {
+      if (!model.Name || !model.PrimaryVersion) return model;
+      try {
+        const response = await client.send(new GetFoundationModelVersionCommand({
+          FoundationModelName: model.Name,
+          ModelVersion: model.PrimaryVersion,
+        }), {
+          timeout: REQUEST_TIMEOUT_MS,
+        });
+        const maxInputTokens =
+          response.Result?.Configuration?.AppSettings?.MaxInputTokenLength;
+        return maxInputTokens === undefined
+          ? model
+          : { ...model, maxInputTokens };
+      } catch {
+        failedVersionLookups.push(`${model.Name}@${model.PrimaryVersion}`);
+        return model;
+      }
+    })));
+  }
+  if (failedVersionLookups.length) {
+    console.warn(
+      `Could not load Ark version metadata for ${failedVersionLookups.length} models: `
+        + failedVersionLookups.join(", "),
+    );
+  }
+  return enriched;
 }
 
 const options = parseArguments(process.argv.slice(2));
-const commit = options.commit ?? await resolveCommit();
-const source = await loadSource(options.input, commit);
+const { commit, source } = await loadSource(options);
 const foundationModels = await listFoundationModels(options.foundationModelsInput);
 const outputFile = resolve(options.output ?? OUTPUT_FILE);
 const outputDirectory = dirname(outputFile);
 const outputBaseName = basename(outputFile, extname(outputFile));
 const metadataFile = join(outputDirectory, `${outputBaseName}.metadata.json`);
 const liteLLMModels = new Map<string, ManifestModel>();
+// Cross-provider entries provide model-level capabilities only. Pricing remains
+// Volcengine-specific and is never copied from this fallback index.
+const fallbackCapabilities = new Map<string, ManifestModel>();
 
 for (const [upstreamId, value] of Object.entries(source)) {
-  if (!isRecord(value) || value.litellm_provider !== "volcengine") {
+  if (!isRecord(value)) continue;
+  if (value.litellm_provider === "volcengine") {
+    const id = normalizeModelKey(upstreamId);
+    if (!id) continue;
+    if (liteLLMModels.has(id)) {
+      throw new Error(`Duplicate normalized Volcengine model id: ${id}`);
+    }
+    liteLLMModels.set(id, convertModel(value));
     continue;
   }
-  const id = normalizeModelKey(upstreamId);
+
+  // Match provider-prefixed IDs such as "dashscope/glm-5.2" to the Ark model
+  // name "glm-5-2". Prefer the candidate with the most capability metadata.
+  const modelName = upstreamId.split("/").at(-1);
+  const id = modelName ? normalizeModelKey(modelName) : "";
   if (!id) continue;
-  if (liteLLMModels.has(id)) {
-    throw new Error(`Duplicate normalized Volcengine model id: ${id}`);
+  const capabilities = convertCapabilities(value);
+  const existing = fallbackCapabilities.get(id);
+  if (!existing || capabilityScore(capabilities) > capabilityScore(existing)) {
+    fallbackCapabilities.set(id, capabilities);
   }
-  liteLLMModels.set(id, convertModel(value));
 }
 
 const models: Record<string, ManifestModel> = {};
@@ -220,7 +356,14 @@ for (const foundation of foundationModels) {
   if (models[id]) {
     throw new Error(`Duplicate normalized Ark foundation model id: ${id}`);
   }
-  const liteLLM = liteLLMModels.get(id) ?? liteLLMModels.get(normalizeModelKey(name));
+  const baseModelName = normalizedName.endsWith("-ga")
+    ? normalizedName.slice(0, -3)
+    : undefined;
+  const liteLLM = liteLLMModels.get(id)
+    ?? liteLLMModels.get(normalizedName)
+    ?? fallbackCapabilities.get(id)
+    ?? fallbackCapabilities.get(normalizedName)
+    ?? (baseModelName ? fallbackCapabilities.get(baseModelName) : undefined);
   models[id] = {
     name,
     ...(foundation.DisplayName ? { displayName: foundation.DisplayName } : {}),
@@ -232,6 +375,9 @@ for (const foundation of foundationModels) {
       ? { domains: foundation.FoundationModelTag.Domains }
       : {}),
     ...liteLLM,
+    ...(foundation.maxInputTokens !== undefined
+      ? { maxInputTokens: foundation.maxInputTokens }
+      : {}),
   };
 }
 

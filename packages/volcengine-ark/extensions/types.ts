@@ -24,6 +24,7 @@ export type {
 
 export interface EndpointModelInfo {
   Id?: string;
+  Name?: string;
   EndpointModelType?: string;
   ModelReference?: {
     FoundationModel?: {
@@ -88,6 +89,10 @@ export type ListFoundationModelsResponse =
   ListFoundationModelsCommandOutput extends CommandOutput<infer Response> ? Response : never;
 export type FoundationModel =
   NonNullable<ListFoundationModelsResponse["Items"]>[number];
+
+export type FoundationModelManifestSource = FoundationModel & {
+  maxInputTokens?: number;
+};
 
 export type VolcengineEndpointModel = Model<"openai-completions"> & {
   endpointId: string;
@@ -208,4 +213,16 @@ export interface ModelManifestUpdateOptions {
   foundationModelsInput?: string;
   commit?: string;
   output?: string;
+  cache?: string;
+  useCache?: boolean;
+}
+
+export interface LiteLLMManifestCache {
+  source: {
+    repository: string;
+    ref: string;
+    commit: string;
+    cachedAt: string;
+  };
+  models: Record<string, unknown>;
 }
