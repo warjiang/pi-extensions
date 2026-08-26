@@ -14,6 +14,7 @@ test("generates a filtered and stable Volcengine manifest", async () => {
   const directory = await mkdtemp(join(tmpdir(), "volcengine-manifest-"));
   const input = join(directory, "input.json");
   const foundationModelsInput = join(directory, "foundation-models.json");
+  const overrides = join(directory, "overrides.json");
   const output = join(directory, "nested", "manifest.json");
   await writeFile(input, JSON.stringify({
     "volcengine/Z_Model": {
@@ -101,22 +102,39 @@ test("generates a filtered and stable Volcengine manifest", async () => {
         TaskTypes: ["Chat", "VisualQuestionAnswering"],
         Domains: ["LLM"],
       },
-      maxInputTokens: 1048576,
     },
   ]), "utf8");
+  await writeFile(overrides, JSON.stringify({
+    "volcengine/doubao-seed-evolving-latest-version": {
+      litellm_provider: "volcengine",
+      max_input_tokens: 1048576,
+      max_output_tokens: 262144,
+      max_tokens: 262144,
+      supports_vision: true,
+      supports_reasoning: true,
+      supports_function_calling: true,
+    },
+  }), "utf8");
 
   try {
-    await execFileAsync(process.execPath, [
+    const { stderr } = await execFileAsync(process.execPath, [
       "scripts/update-model-manifest.ts",
       "--input",
       input,
       "--foundation-models-input",
       foundationModelsInput,
+      "--overrides",
+      overrides,
       "--commit",
       "0123456789abcdef0123456789abcdef01234567",
       "--output",
       output,
     ], { cwd: PACKAGE_DIR });
+    assert.match(
+      stderr,
+      /No LiteLLM or local override metadata for 1 Ark models:\n- image-model-1-0/,
+    );
+    assert.match(stderr, /Incomplete token metadata for \d+ Ark chat models:/);
     const manifestText = await readFile(output, "utf8");
     const generated = JSON.parse(manifestText);
     const metadata = JSON.parse(await readFile(
@@ -179,6 +197,11 @@ test("generates a filtered and stable Volcengine manifest", async () => {
       domains: ["LLM"],
       mode: "chat",
       maxInputTokens: 1_048_576,
+      maxOutputTokens: 262_144,
+      maxTokens: 262_144,
+      supportsVision: true,
+      supportsReasoning: true,
+      supportsFunctionCalling: true,
     });
     assert.equal(generated.models["other-model"], undefined);
     assert.equal(
@@ -186,6 +209,7 @@ test("generates a filtered and stable Volcengine manifest", async () => {
       "0123456789abcdef0123456789abcdef01234567",
     );
     assert.equal(generated.source.arkOperation, "ListFoundationModels");
+    assert.equal(generated.source.localOverrides, "overrides.json");
     assert.equal(metadata.generatedAt, generated.source.generatedAt);
     assert.equal(
       metadata.sha256,
@@ -200,6 +224,7 @@ test("generates from the local LiteLLM cache without a remote lookup", async () 
   const directory = await mkdtemp(join(tmpdir(), "volcengine-manifest-cache-"));
   const cache = join(directory, "litellm-cache.json");
   const foundationModelsInput = join(directory, "foundation-models.json");
+  const overrides = join(directory, "overrides.json");
   const output = join(directory, "manifest.json");
   const commit = "fedcba9876543210fedcba9876543210fedcba98";
   await writeFile(cache, JSON.stringify({
@@ -220,6 +245,7 @@ test("generates from the local LiteLLM cache without a remote lookup", async () 
   await writeFile(foundationModelsInput, JSON.stringify([
     { Name: "cached-model" },
   ]), "utf8");
+  await writeFile(overrides, "{}\n", "utf8");
 
   try {
     await execFileAsync(process.execPath, [
@@ -229,6 +255,8 @@ test("generates from the local LiteLLM cache without a remote lookup", async () 
       cache,
       "--foundation-models-input",
       foundationModelsInput,
+      "--overrides",
+      overrides,
       "--output",
       output,
     ], {
@@ -256,6 +284,7 @@ test("refreshes the local LiteLLM cache after downloading the source", async () 
   const curl = join(bin, "curl");
   const cache = join(directory, "litellm-cache.json");
   const foundationModelsInput = join(directory, "foundation-models.json");
+  const overrides = join(directory, "overrides.json");
   const output = join(directory, "manifest.json");
   const commit = "0123456789abcdef0123456789abcdef01234567";
   const source = {
@@ -271,6 +300,7 @@ test("refreshes the local LiteLLM cache after downloading the source", async () 
   await writeFile(foundationModelsInput, JSON.stringify([
     { Name: "downloaded-model" },
   ]), "utf8");
+  await writeFile(overrides, "{}\n", "utf8");
 
   try {
     await execFileAsync(process.execPath, [
@@ -281,6 +311,8 @@ test("refreshes the local LiteLLM cache after downloading the source", async () 
       cache,
       "--foundation-models-input",
       foundationModelsInput,
+      "--overrides",
+      overrides,
       "--output",
       output,
     ], {

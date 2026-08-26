@@ -8,7 +8,6 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import {
   ARKClient,
-  GetFoundationModelVersionCommand,
   ListFoundationModelsCommand,
 } from "@volcengine/ark";
 import {
@@ -32,6 +31,10 @@ const SOURCE_FILE = "model_prices_and_context_window.json";
 const CACHE_FILE = resolve(
   dirname(fileURLToPath(import.meta.url)),
   "data/litellm-model-manifest.json",
+);
+const LOCAL_OVERRIDES_FILE = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "data/model-overrides.json",
 );
 const OUTPUT_FILE = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -76,6 +79,7 @@ function parseArguments(argv: string[]): ModelManifestUpdateOptions {
     else if (argument === "--commit") options.commit = argv[++index];
     else if (argument === "--output") options.output = argv[++index];
     else if (argument === "--cache") options.cache = argv[++index];
+    else if (argument === "--overrides") options.overrides = argv[++index];
     else if (argument === "--use-cache") options.useCache = true;
     else throw new Error(`Unknown argument: ${argument}`);
   }
@@ -171,6 +175,30 @@ async function loadSource(
   return { commit, source };
 }
 
+async function loadLocalOverrides(path: string): Promise<Record<string, unknown>> {
+  const source = parseSource(await readFile(path, "utf8"));
+  for (const [modelId, value] of Object.entries(source)) {
+    if (!isRecord(value)) {
+      throw new Error(`Local model override must be an object: ${modelId}`);
+    }
+  }
+  return source;
+}
+
+function mergeModelSources(
+  upstream: Record<string, unknown>,
+  local: Record<string, unknown>,
+): Record<string, unknown> {
+  const merged = { ...upstream };
+  for (const [modelId, localValue] of Object.entries(local)) {
+    const upstreamValue = merged[modelId];
+    merged[modelId] = isRecord(upstreamValue) && isRecord(localValue)
+      ? { ...upstreamValue, ...localValue }
+      : localValue;
+  }
+  return merged;
+}
+
 function convertTier(tier: unknown): ManifestPriceTier | undefined {
   if (!isRecord(tier) || !Array.isArray(tier.range)) return undefined;
   const start = optionalNumber(tier.range[0]);
@@ -218,6 +246,20 @@ function capabilityScore(model: ManifestModel): number {
     model.supportsReasoning,
     model.supportsFunctionCalling,
   ].filter((value) => value !== undefined).length;
+}
+
+function isChatFoundationModel(
+  foundation: FoundationModelManifestSource,
+  metadata: ManifestModel | undefined,
+): boolean {
+  if (metadata?.mode === "chat") return true;
+  const tags = [
+    ...(foundation.FoundationModelTag?.TaskTypes ?? []),
+    ...(foundation.FoundationModelTag?.Domains ?? []),
+  ].map((tag) => tag.trim().toLowerCase().replace(/[^a-z0-9]+/g, ""));
+  return tags.some((tag) =>
+    ["chat", "llm", "vlm", "textgeneration", "visualquestionanswering"].includes(tag)
+  );
 }
 
 async function listFoundationModels(
@@ -268,44 +310,14 @@ async function listFoundationModels(
     }
   }
 
-  const enriched: FoundationModelManifestSource[] = [];
-  const failedVersionLookups: string[] = [];
-  // ListFoundationModels does not expose context-window limits. Resolve each
-  // primary version once while generating the static manifest so runtime model
-  // discovery never needs model-name-specific overrides or extra API calls.
-  for (let offset = 0; offset < models.length; offset += 10) {
-    const batch = models.slice(offset, offset + 10);
-    enriched.push(...await Promise.all(batch.map(async (model) => {
-      if (!model.Name || !model.PrimaryVersion) return model;
-      try {
-        const response = await client.send(new GetFoundationModelVersionCommand({
-          FoundationModelName: model.Name,
-          ModelVersion: model.PrimaryVersion,
-        }), {
-          timeout: REQUEST_TIMEOUT_MS,
-        });
-        const maxInputTokens =
-          response.Result?.Configuration?.AppSettings?.MaxInputTokenLength;
-        return maxInputTokens === undefined
-          ? model
-          : { ...model, maxInputTokens };
-      } catch {
-        failedVersionLookups.push(`${model.Name}@${model.PrimaryVersion}`);
-        return model;
-      }
-    })));
-  }
-  if (failedVersionLookups.length) {
-    console.warn(
-      `Could not load Ark version metadata for ${failedVersionLookups.length} models: `
-        + failedVersionLookups.join(", "),
-    );
-  }
-  return enriched;
+  return models;
 }
 
 const options = parseArguments(process.argv.slice(2));
-const { commit, source } = await loadSource(options);
+const { commit, source: upstreamSource } = await loadSource(options);
+const overridesFile = resolve(options.overrides ?? LOCAL_OVERRIDES_FILE);
+const localOverrides = await loadLocalOverrides(overridesFile);
+const source = mergeModelSources(upstreamSource, localOverrides);
 const foundationModels = await listFoundationModels(options.foundationModelsInput);
 const outputFile = resolve(options.output ?? OUTPUT_FILE);
 const outputDirectory = dirname(outputFile);
@@ -341,6 +353,8 @@ for (const [upstreamId, value] of Object.entries(source)) {
 }
 
 const models: Record<string, ManifestModel> = {};
+const missingMetadata: string[] = [];
+const incompleteChatMetadata: string[] = [];
 for (const foundation of foundationModels) {
   const name = foundation.Name?.trim();
   if (!name) continue;
@@ -364,6 +378,18 @@ for (const foundation of foundationModels) {
     ?? fallbackCapabilities.get(id)
     ?? fallbackCapabilities.get(normalizedName)
     ?? (baseModelName ? fallbackCapabilities.get(baseModelName) : undefined);
+  if (!liteLLM) missingMetadata.push(id);
+  if (isChatFoundationModel(foundation, liteLLM)) {
+    const missingFields = [
+      liteLLM?.maxInputTokens === undefined ? "max_input_tokens" : undefined,
+      liteLLM?.maxOutputTokens === undefined && liteLLM?.maxTokens === undefined
+        ? "max_output_tokens/max_tokens"
+        : undefined,
+    ].filter((field): field is string => field !== undefined);
+    if (missingFields.length) {
+      incompleteChatMetadata.push(`${id}: ${missingFields.join(", ")}`);
+    }
+  }
   models[id] = {
     name,
     ...(foundation.DisplayName ? { displayName: foundation.DisplayName } : {}),
@@ -375,10 +401,20 @@ for (const foundation of foundationModels) {
       ? { domains: foundation.FoundationModelTag.Domains }
       : {}),
     ...liteLLM,
-    ...(foundation.maxInputTokens !== undefined
-      ? { maxInputTokens: foundation.maxInputTokens }
-      : {}),
   };
+}
+
+if (missingMetadata.length) {
+  console.warn(
+    `No LiteLLM or local override metadata for ${missingMetadata.length} Ark models:\n`
+      + missingMetadata.map((id) => `- ${id}`).join("\n"),
+  );
+}
+if (incompleteChatMetadata.length) {
+  console.warn(
+    `Incomplete token metadata for ${incompleteChatMetadata.length} Ark chat models:\n`
+      + incompleteChatMetadata.map((entry) => `- ${entry}`).join("\n"),
+  );
 }
 
 const sortedModels = Object.fromEntries(
@@ -392,6 +428,7 @@ const manifest = {
     commit,
     generatedAt,
     arkOperation: "ListFoundationModels",
+    localOverrides: basename(overridesFile),
   },
   models: sortedModels,
 };

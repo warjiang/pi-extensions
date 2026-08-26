@@ -3,8 +3,9 @@
     "repository": "BerriAI/litellm",
     "ref": "litellm_internal_staging",
     "commit": "31a67561ab23794bd9bdb72489b05f06e10b1c03",
-    "generatedAt": "2026-08-25T12:17:04.632Z",
-    "arkOperation": "ListFoundationModels"
+    "generatedAt": "2026-08-26T07:35:00.667Z",
+    "arkOperation": "ListFoundationModels",
+    "localOverrides": "model-overrides.json"
   },
   "models": {
     "deepseek-r1-250528": {
@@ -35,7 +36,7 @@
         "LLM"
       ],
       "mode": "chat",
-      "maxInputTokens": 65536,
+      "maxInputTokens": 80000,
       "maxOutputTokens": 80000,
       "maxTokens": 80000,
       "supportsReasoning": true
@@ -51,7 +52,7 @@
         "LLM"
       ],
       "mode": "chat",
-      "maxInputTokens": 65536,
+      "maxInputTokens": 131072,
       "maxOutputTokens": 131072,
       "maxTokens": 131072
     },
@@ -83,7 +84,7 @@
         "LLM"
       ],
       "mode": "chat",
-      "maxInputTokens": 131072,
+      "maxInputTokens": 98304,
       "maxOutputTokens": 32768,
       "maxTokens": 32768,
       "supportsReasoning": true,
@@ -102,7 +103,7 @@
         "LLM"
       ],
       "mode": "chat",
-      "maxInputTokens": 65536,
+      "maxInputTokens": 163840,
       "maxOutputTokens": 163840,
       "maxTokens": 163840,
       "supportsFunctionCalling": true
@@ -182,8 +183,7 @@
       ],
       "domains": [
         "LLM"
-      ],
-      "maxInputTokens": 32768
+      ]
     },
     "doubao-1-5-pro-256k-250115": {
       "name": "doubao-1-5-pro-256k",
@@ -194,8 +194,7 @@
       ],
       "domains": [
         "LLM"
-      ],
-      "maxInputTokens": 262144
+      ]
     },
     "doubao-1-5-pro-32k-250115": {
       "name": "doubao-1-5-pro-32k",
@@ -206,8 +205,7 @@
       ],
       "domains": [
         "LLM"
-      ],
-      "maxInputTokens": 32768
+      ]
     },
     "doubao-1-5-thinking-pro-250415": {
       "name": "doubao-1-5-thinking-pro",
@@ -218,8 +216,7 @@
       ],
       "domains": [
         "LLM"
-      ],
-      "maxInputTokens": 131072
+      ]
     },
     "doubao-1-5-thinking-vision-pro-250428": {
       "name": "doubao-1-5-thinking-vision-pro",
@@ -230,8 +227,7 @@
       ],
       "domains": [
         "LLM"
-      ],
-      "maxInputTokens": 131072
+      ]
     },
     "doubao-1-5-ui-tars-250428": {
       "name": "doubao-1-5-ui-tars",
@@ -242,8 +238,7 @@
       ],
       "domains": [
         "LLM"
-      ],
-      "maxInputTokens": 32768
+      ]
     },
     "doubao-1-5-vision-lite-250315": {
       "name": "doubao-1-5-vision-lite",
@@ -254,8 +249,7 @@
       ],
       "domains": [
         "LLM"
-      ],
-      "maxInputTokens": 131072
+      ]
     },
     "doubao-1-5-vision-pro-250328": {
       "name": "doubao-1-5-vision-pro",
@@ -266,8 +260,7 @@
       ],
       "domains": [
         "LLM"
-      ],
-      "maxInputTokens": 131072
+      ]
     },
     "doubao-1-5-vision-pro-32k-250115": {
       "name": "doubao-1-5-vision-pro-32k",
@@ -278,8 +271,7 @@
       ],
       "domains": [
         "LLM"
-      ],
-      "maxInputTokens": 32768
+      ]
     },
     "doubao-clasi": {
       "name": "doubao-clasi",
@@ -299,7 +291,7 @@
         "Embedding"
       ],
       "mode": "embedding",
-      "maxInputTokens": 8096,
+      "maxInputTokens": 4096,
       "maxTokens": 4096,
       "inputCostPerToken": 0,
       "outputCostPerToken": 0
@@ -315,7 +307,7 @@
         "Embedding"
       ],
       "mode": "embedding",
-      "maxInputTokens": 2048,
+      "maxInputTokens": 4096,
       "maxTokens": 4096,
       "inputCostPerToken": 0,
       "outputCostPerToken": 0
@@ -349,8 +341,7 @@
       ],
       "domains": [
         "LLM"
-      ],
-      "maxInputTokens": 131072
+      ]
     },
     "doubao-lite-32k-240828": {
       "name": "doubao-lite-32k",
@@ -361,8 +352,7 @@
       ],
       "domains": [
         "LLM"
-      ],
-      "maxInputTokens": 32768
+      ]
     },
     "doubao-lite-4k-character-240828": {
       "name": "doubao-lite-4k",
@@ -373,8 +363,7 @@
       ],
       "domains": [
         "LLM"
-      ],
-      "maxInputTokens": 4096
+      ]
     },
     "doubao-pro-128k-240628": {
       "name": "doubao-pro-128k",
@@ -385,8 +374,7 @@
       ],
       "domains": [
         "LLM"
-      ],
-      "maxInputTokens": 131072
+      ]
     },
     "doubao-pro-256k-241115": {
       "name": "doubao-pro-256k",
@@ -397,8 +385,7 @@
       ],
       "domains": [
         "LLM"
-      ],
-      "maxInputTokens": 262144
+      ]
     },
     "doubao-pro-32k-241215": {
       "name": "doubao-pro-32k",
@@ -409,8 +396,7 @@
       ],
       "domains": [
         "LLM"
-      ],
-      "maxInputTokens": 32768
+      ]
     },
     "doubao-pro-4k-240515": {
       "name": "doubao-pro-4k",
@@ -421,8 +407,7 @@
       ],
       "domains": [
         "LLM"
-      ],
-      "maxInputTokens": 4096
+      ]
     },
     "doubao-realtime": {
       "name": "doubao-realtime",
@@ -452,8 +437,7 @@
       ],
       "domains": [
         "LLM"
-      ],
-      "maxInputTokens": 131072
+      ]
     },
     "doubao-seed-1-6-flash-250828": {
       "name": "doubao-seed-1-6-flash",
@@ -464,8 +448,7 @@
       ],
       "domains": [
         "LLM"
-      ],
-      "maxInputTokens": 262144
+      ]
     },
     "doubao-seed-1-6-lite-251015": {
       "name": "doubao-seed-1-6-lite",
@@ -477,8 +460,7 @@
       ],
       "domains": [
         "LLM"
-      ],
-      "maxInputTokens": 229376
+      ]
     },
     "doubao-seed-1-6-thinking-250715": {
       "name": "doubao-seed-1-6-thinking",
@@ -490,8 +472,7 @@
       ],
       "domains": [
         "LLM"
-      ],
-      "maxInputTokens": 229376
+      ]
     },
     "doubao-seed-1-6-vision-250815": {
       "name": "doubao-seed-1-6-vision",
@@ -502,8 +483,7 @@
       ],
       "domains": [
         "LLM"
-      ],
-      "maxInputTokens": 262144
+      ]
     },
     "doubao-seed-1-8-251228": {
       "name": "doubao-seed-1-8",
@@ -515,8 +495,7 @@
       ],
       "domains": [
         "LLM"
-      ],
-      "maxInputTokens": 229376
+      ]
     },
     "doubao-seed-2-0-code-preview-260215": {
       "name": "doubao-seed-2-0-code",
@@ -530,7 +509,7 @@
         "LLM"
       ],
       "mode": "chat",
-      "maxInputTokens": 262144,
+      "maxInputTokens": 256000,
       "maxOutputTokens": 128000,
       "maxTokens": 128000,
       "supportsVision": true,
@@ -576,8 +555,7 @@
       ],
       "domains": [
         "LLM"
-      ],
-      "maxInputTokens": 262144
+      ]
     },
     "doubao-seed-2-0-pro-260215": {
       "name": "doubao-seed-2-0-pro",
@@ -591,7 +569,7 @@
         "LLM"
       ],
       "mode": "chat",
-      "maxInputTokens": 262144,
+      "maxInputTokens": 256000,
       "maxOutputTokens": 128000,
       "maxTokens": 128000,
       "supportsVision": true,
@@ -625,8 +603,7 @@
       ],
       "domains": [
         "LLM"
-      ],
-      "maxInputTokens": 262144
+      ]
     },
     "doubao-seed-2-1-turbo-260628": {
       "name": "doubao-seed-2-1-turbo",
@@ -638,8 +615,7 @@
       ],
       "domains": [
         "LLM"
-      ],
-      "maxInputTokens": 262144
+      ]
     },
     "doubao-seed-character-260628": {
       "name": "doubao-seed-character",
@@ -650,8 +626,7 @@
       ],
       "domains": [
         "LLM"
-      ],
-      "maxInputTokens": 229376
+      ]
     },
     "doubao-seed-code-preview-251028": {
       "name": "doubao-seed-code",
@@ -663,8 +638,7 @@
       ],
       "domains": [
         "LLM"
-      ],
-      "maxInputTokens": 229376
+      ]
     },
     "doubao-seed-evolving-latest-version": {
       "name": "doubao-seed-evolving",
@@ -677,7 +651,13 @@
       "domains": [
         "LLM"
       ],
-      "maxInputTokens": 262144
+      "mode": "chat",
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 262144,
+      "maxTokens": 262144,
+      "supportsVision": true,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true
     },
     "doubao-seed-translation-250915": {
       "name": "doubao-seed-translation",
@@ -685,8 +665,7 @@
       "primaryVersion": "250915",
       "domains": [
         "LLM"
-      ],
-      "maxInputTokens": 4096
+      ]
     },
     "doubao-seed3d-1-0-250928": {
       "name": "doubao-seed3d-1-0",
@@ -739,8 +718,7 @@
       ],
       "domains": [
         "ComputerVision"
-      ],
-      "maxInputTokens": 32768
+      ]
     },
     "doubao-seedance-1-0-pro-fast-251015": {
       "name": "doubao-seedance-1-0-pro-fast",
@@ -810,8 +788,7 @@
       ],
       "domains": [
         "ComputerVision"
-      ],
-      "maxInputTokens": 262144
+      ]
     },
     "doubao-seededit-3-0-i2i-250628": {
       "name": "doubao-seededit-3-0-i2i",
@@ -857,8 +834,7 @@
       ],
       "domains": [
         "ComputerVision"
-      ],
-      "maxInputTokens": 262144
+      ]
     },
     "doubao-seedream-5-0-260128": {
       "name": "doubao-seedream-5-0",
@@ -911,8 +887,7 @@
       ],
       "domains": [
         "LLM"
-      ],
-      "maxInputTokens": 32768
+      ]
     },
     "doubao-vision-pro-32k-241028": {
       "name": "doubao-vision-pro-32k",
@@ -923,8 +898,7 @@
       ],
       "domains": [
         "LLM"
-      ],
-      "maxInputTokens": 32768
+      ]
     },
     "glm-4-7-251222": {
       "name": "glm-4-7",
@@ -966,8 +940,7 @@
       ],
       "domains": [
         "ComputerVision"
-      ],
-      "maxInputTokens": 204800
+      ]
     },
     "hyper3d-gen2-260112": {
       "name": "hyper3d-gen2",
@@ -979,8 +952,7 @@
       ],
       "domains": [
         "ComputerVision"
-      ],
-      "maxInputTokens": 204800
+      ]
     },
     "kimi-k2-thinking-251104": {
       "name": "kimi-k2",

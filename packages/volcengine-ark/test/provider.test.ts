@@ -299,6 +299,7 @@ test("uses the generated Seed Evolving context window metadata", () => {
     model?.contextWindow,
     getModelManifest().models["doubao-seed-evolving-latest-version"]?.maxInputTokens,
   );
+  assert.equal(model?.contextWindow, 1_048_576);
 });
 
 test("uses LiteLLM for chat capabilities and pricing", () => {

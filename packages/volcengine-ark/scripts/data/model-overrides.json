@@ -1,0 +1,13 @@
+{
+  "volcengine/doubao-seed-evolving-latest-version": {
+    "litellm_provider": "volcengine",
+    "mode": "chat",
+    "max_input_tokens": 1048576,
+    "max_output_tokens": 262144,
+    "max_tokens": 262144,
+    "supports_vision": true,
+    "supports_reasoning": true,
+    "supports_function_calling": true,
+    "source": "https://zhuanlan.zhihu.com/p/2060789063779620845"
+  }
+}

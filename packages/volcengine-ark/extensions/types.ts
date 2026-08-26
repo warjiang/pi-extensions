@@ -65,6 +65,7 @@ export interface ModelManifest {
     commit: string;
     generatedAt: string;
     arkOperation?: "ListFoundationModels";
+    localOverrides?: string;
   };
   models: Record<string, ManifestModel>;
 }
@@ -90,9 +91,7 @@ export type ListFoundationModelsResponse =
 export type FoundationModel =
   NonNullable<ListFoundationModelsResponse["Items"]>[number];
 
-export type FoundationModelManifestSource = FoundationModel & {
-  maxInputTokens?: number;
-};
+export type FoundationModelManifestSource = FoundationModel;
 
 export type VolcengineEndpointModel = Model<"openai-completions"> & {
   endpointId: string;
@@ -214,6 +213,7 @@ export interface ModelManifestUpdateOptions {
   commit?: string;
   output?: string;
   cache?: string;
+  overrides?: string;
   useCache?: boolean;
 }
 
