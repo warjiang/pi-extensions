@@ -28,7 +28,9 @@
   "scripts": {
     "dev": "pi -e .",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "node --experimental-strip-types --test test/*.test.ts"
+    "test": "node --experimental-strip-types --test test/*.test.ts",
+    "update:manifest": "node --experimental-strip-types scripts/update-model-manifest.ts",
+    "update:manifest:cached": "node --experimental-strip-types scripts/update-model-manifest.ts --use-cache"
   },
   "dependencies": {
     "@volcengine/ark": "^1.0.3",

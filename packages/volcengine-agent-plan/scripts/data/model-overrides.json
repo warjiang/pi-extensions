@@ -1,0 +1,61 @@
+{
+  "ark-code-latest": {
+    "displayName": "Ark Code Latest",
+    "maxInputTokens": 256000,
+    "maxOutputTokens": 32768,
+    "supportsVision": true,
+    "supportsReasoning": true,
+    "supportsFunctionCalling": true
+  },
+  "doubao-seed-2.0-lite": {
+    "displayName": "Doubao Seed 2.0 Lite"
+  },
+  "doubao-seed-2.0-mini": {
+    "displayName": "Doubao Seed 2.0 Mini"
+  },
+  "doubao-seed-2-1-turbo": {
+    "displayName": "Doubao Seed 2.1 Turbo"
+  },
+  "deepseek-v4-flash": {
+    "displayName": "DeepSeek V4 Flash",
+    "maxInputTokens": 1048576,
+    "maxOutputTokens": 384000,
+    "supportsVision": false,
+    "supportsReasoning": true,
+    "supportsFunctionCalling": true,
+    "supportsMaxThinking": true
+  },
+  "deepseek-v4-pro": {
+    "displayName": "DeepSeek V4 Pro",
+    "maxInputTokens": 1048576,
+    "maxOutputTokens": 384000,
+    "supportsVision": false,
+    "supportsReasoning": true,
+    "supportsFunctionCalling": true,
+    "supportsMaxThinking": true
+  },
+  "kimi-k2.7-code": {
+    "displayName": "Kimi K2.7 Code",
+    "maxInputTokens": 262144,
+    "maxOutputTokens": 32768,
+    "supportsVision": true,
+    "supportsReasoning": true,
+    "supportsFunctionCalling": true
+  },
+  "kimi-k3": {
+    "displayName": "Kimi K3",
+    "maxInputTokens": 1048576,
+    "maxOutputTokens": 131072,
+    "supportsVision": true,
+    "supportsReasoning": true,
+    "supportsFunctionCalling": true
+  },
+  "minimax-m3": {
+    "displayName": "MiniMax M3",
+    "maxInputTokens": 512000,
+    "maxOutputTokens": 512000,
+    "supportsVision": true,
+    "supportsReasoning": true,
+    "supportsFunctionCalling": true
+  }
+}

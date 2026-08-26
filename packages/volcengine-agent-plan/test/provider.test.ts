@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { HttpRequestError } from "@volcengine/sdk-core";
-import { createAgentPlanProvider, login } from "../extensions/index.ts";
+import {
+  createAgentPlanProvider,
+  login,
+  migrateCachedModels,
+} from "../extensions/index.ts";
+import { modelFromId, resolveModelMetadata } from "../extensions/model-manifest.ts";
 import {
   fetchPlanModels,
   ListArkAgentPlanModelCommand,
@@ -64,10 +69,13 @@ test("loads only model IDs returned by ListArkAgentPlanModel", async () => {
           "/ListArkAgentPlanModel/2024-01-01/ark/post/application_json/",
         );
         assert.equal(options.abortSignal.aborted, false);
+        assert.equal(options.timeout, 15_000);
         return {
           Result: {
             Datas: [
+              { ModelID: "" },
               { ModelID: "deepseek-v4-pro" },
+              { ModelID: " deepseek-v4-pro " },
               { ModelID: "new-agent-model" },
             ],
           },
@@ -81,6 +89,42 @@ test("loads only model IDs returned by ListArkAgentPlanModel", async () => {
   assert.equal(models[0]?.compat?.maxTokensField, "max_tokens");
   assert.equal(models[0]?.compat?.supportsDeveloperRole, false);
   assert.equal(models[0]?.thinkingLevelMap?.xhigh, "max");
+});
+
+test("manifest metadata controls Agent capabilities and xhigh", () => {
+  assert.equal(
+    resolveModelMetadata("volcengine:DeepSeek V4 Pro")?.id,
+    "deepseek-v4-pro",
+  );
+  const known = modelFromId("deepseek-v4-pro");
+  assert.equal(known.reasoning, true);
+  assert.equal(known.thinkingLevelMap?.xhigh, "max");
+  assert.equal(known.compat?.maxTokensField, "max_tokens");
+  assert.equal(known.compat?.supportsDeveloperRole, false);
+
+  const unknown = modelFromId("future-agent-model");
+  assert.equal(unknown.contextWindow, 128_000);
+  assert.equal(unknown.maxTokens, 16_384);
+  assert.equal(unknown.reasoning, true);
+  assert.deepEqual(unknown.thinkingLevelMap, { minimal: null });
+  assert.deepEqual(unknown.input, ["text"]);
+});
+
+test("refreshes Agent metadata in persisted models", () => {
+  const stored = {
+    checkedAt: 1,
+    models: [{
+      ...modelFromId("doubao-seed-2-1-turbo"),
+      contextWindow: 1,
+      maxTokens: 1,
+      reasoning: false,
+    }],
+  };
+  const migrated = migrateCachedModels(stored);
+  assert.equal(migrated?.models[0]?.id, "doubao-seed-2-1-turbo");
+  assert.equal(migrated?.models[0]?.contextWindow, 256_000);
+  assert.equal(migrated?.models[0]?.maxTokens, 256_000);
+  assert.equal(migrated?.models[0]?.reasoning, true);
 });
 
 test("accepts an empty official catalog", async () => {

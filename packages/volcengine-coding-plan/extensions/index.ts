@@ -1,15 +1,24 @@
 import {
   createProvider,
+  type Api,
   type ApiKeyCredential,
   type AuthInteraction,
   type Model,
+  type RefreshModelsContext,
 } from "@earendil-works/pi-ai";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/compat";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import {
+  BASE_URL,
+  ENV_NAMES,
+  PROVIDER_ID,
+  PROVIDER_NAME,
+} from "./constants.ts";
+import { applyCurrentManifestMetadata } from "./model-manifest.ts";
 import { fetchPlanModels } from "./models.ts";
 
-export const PROVIDER_ID = "volcengine-coding-plan";
-export const BASE_URL = "https://ark.cn-beijing.volces.com/api/coding/v3";
+export { BASE_URL, PROVIDER_ID } from "./constants.ts";
+export type * from "./types.ts";
 
 export async function login(interaction: AuthInteraction): Promise<ApiKeyCredential> {
   const key = await interaction.prompt({
@@ -31,8 +40,8 @@ export async function login(interaction: AuthInteraction): Promise<ApiKeyCredent
     type: "api_key",
     key: key || undefined,
     env: {
-      VOLCENGINE_ACCESS_KEY_ID: accessKeyId,
-      VOLCENGINE_SECRET_ACCESS_KEY: secretAccessKey,
+      ...(accessKeyId ? { [ENV_NAMES.accessKeyId]: accessKeyId } : {}),
+      ...(secretAccessKey ? { [ENV_NAMES.secretAccessKey]: secretAccessKey } : {}),
     },
   };
 }
@@ -46,9 +55,9 @@ async function resolveField(
 }
 
 export function createCodingPlanProvider() {
-  return createProvider<"openai-completions">({
+  const provider = createProvider<"openai-completions">({
     id: PROVIDER_ID,
-    name: "Volcengine Coding Plan",
+    name: PROVIDER_NAME,
     baseUrl: BASE_URL,
     auth: {
       apiKey: {
@@ -56,16 +65,16 @@ export function createCodingPlanProvider() {
         login,
         async resolve({ ctx, credential }) {
           const key = credential?.key
-            || (await ctx.env("VOLCENGINE_CODING_PLAN_API_KEY"))
-            || (await ctx.env("VOLCENGINE_PLAN_API_KEY"));
-          const accessKeyId = await resolveField(ctx, credential, "VOLCENGINE_ACCESS_KEY_ID");
-          const secretAccessKey = await resolveField(ctx, credential, "VOLCENGINE_SECRET_ACCESS_KEY");
+            || (await ctx.env(ENV_NAMES.apiKey))
+            || (await ctx.env(ENV_NAMES.legacyApiKey));
+          const accessKeyId = await resolveField(ctx, credential, ENV_NAMES.accessKeyId);
+          const secretAccessKey = await resolveField(ctx, credential, ENV_NAMES.secretAccessKey);
           if (!key && !accessKeyId && !secretAccessKey) return undefined;
           return {
             auth: key ? { apiKey: key } : {},
             env: {
-              ...(accessKeyId ? { VOLCENGINE_ACCESS_KEY_ID: accessKeyId } : {}),
-              ...(secretAccessKey ? { VOLCENGINE_SECRET_ACCESS_KEY: secretAccessKey } : {}),
+              ...(accessKeyId ? { [ENV_NAMES.accessKeyId]: accessKeyId } : {}),
+              ...(secretAccessKey ? { [ENV_NAMES.secretAccessKey]: secretAccessKey } : {}),
             },
             source: credential ? "stored Coding Plan credentials" : "Coding Plan environment variables",
           };
@@ -76,6 +85,38 @@ export function createCodingPlanProvider() {
     fetchModels: (context) => fetchPlanModels(context),
     api: openAICompletionsApi(),
   });
+  const refreshModels = provider.refreshModels!;
+  provider.refreshModels = async (context) => {
+    const stored = migrateCachedModels(context.stored);
+    const migrated = stored !== context.stored;
+    await refreshModels({
+      ...context,
+      stored,
+      publish: (publication) => context.publish(
+        migrated && publication.persist === undefined
+          ? { ...publication, persist: stored }
+          : publication,
+      ),
+    });
+  };
+  return provider;
+}
+
+export function migrateCachedModels(
+  stored: RefreshModelsContext["stored"],
+): RefreshModelsContext["stored"] {
+  if (!stored) return stored;
+  let changed = false;
+  const models = stored.models.map((model) => {
+    if (model.provider !== PROVIDER_ID || model.api !== "openai-completions") {
+      return model;
+    }
+    changed = true;
+    return applyCurrentManifestMetadata(
+      model as Model<"openai-completions">,
+    ) as Model<Api>;
+  });
+  return changed ? { ...stored, models } : stored;
 }
 
 export default function volcengineCodingPlan(pi: ExtensionAPI): void {

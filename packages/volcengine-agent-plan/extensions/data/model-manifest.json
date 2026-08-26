@@ -1,0 +1,157 @@
+{
+  "source": {
+    "operation": "ListArkAgentPlanModel",
+    "generatedAt": "2026-08-26T14:27:28.868Z",
+    "liteLLM": {
+      "repository": "BerriAI/litellm",
+      "ref": "litellm_internal_staging",
+      "commit": "31a67561ab23794bd9bdb72489b05f06e10b1c03"
+    },
+    "arkManifest": "packages/volcengine-ark/extensions/data/model-manifest.json",
+    "localOverrides": "model-overrides.json"
+  },
+  "models": {
+    "ark-code-latest": {
+      "displayName": "Ark Code Latest",
+      "maxInputTokens": 256000,
+      "maxOutputTokens": 32768,
+      "supportsVision": true,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true,
+      "id": "ark-code-latest"
+    },
+    "deepseek-latest": {
+      "id": "deepseek-latest"
+    },
+    "deepseek-v4-flash": {
+      "displayName": "DeepSeek V4 Flash",
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 384000,
+      "supportsVision": false,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true,
+      "supportsMaxThinking": true,
+      "id": "deepseek-v4-flash"
+    },
+    "deepseek-v4-pro": {
+      "displayName": "DeepSeek V4 Pro",
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 384000,
+      "supportsVision": false,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true,
+      "supportsMaxThinking": true,
+      "id": "deepseek-v4-pro"
+    },
+    "doubao-embedding-vision": {
+      "displayName": "Doubao-embedding-vision",
+      "id": "doubao-embedding-vision"
+    },
+    "doubao-seed-2-1-turbo": {
+      "displayName": "Doubao Seed 2.1 Turbo",
+      "maxInputTokens": 256000,
+      "maxOutputTokens": 256000,
+      "maxTokens": 256000,
+      "supportsVision": true,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true,
+      "id": "doubao-seed-2-1-turbo"
+    },
+    "doubao-seed-2.0-lite": {
+      "displayName": "Doubao Seed 2.0 Lite",
+      "maxInputTokens": 256000,
+      "maxOutputTokens": 128000,
+      "maxTokens": 128000,
+      "supportsVision": true,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true,
+      "id": "doubao-seed-2.0-lite"
+    },
+    "doubao-seed-2.0-mini": {
+      "displayName": "Doubao Seed 2.0 Mini",
+      "maxInputTokens": 256000,
+      "maxOutputTokens": 128000,
+      "maxTokens": 128000,
+      "supportsVision": true,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true,
+      "id": "doubao-seed-2.0-mini"
+    },
+    "doubao-seed-evolving": {
+      "displayName": "Doubao-Seed-Evolving",
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 262144,
+      "maxTokens": 262144,
+      "supportsVision": true,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true,
+      "id": "doubao-seed-evolving"
+    },
+    "doubao-seedance-2.0": {
+      "displayName": "Doubao-Seedance-2.0",
+      "id": "doubao-seedance-2.0"
+    },
+    "doubao-seedance-2.0-fast": {
+      "displayName": "Doubao-Seedance-2.0-fast",
+      "id": "doubao-seedance-2.0-fast"
+    },
+    "doubao-seedream-5.0-lite": {
+      "displayName": "Doubao-Seedream-5.0-lite",
+      "id": "doubao-seedream-5.0-lite"
+    },
+    "glm-5.2": {
+      "displayName": "GLM-5.2",
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 131072,
+      "maxTokens": 131072,
+      "supportsVision": false,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true,
+      "id": "glm-5.2"
+    },
+    "glm-5.3": {
+      "id": "glm-5.3"
+    },
+    "glm-latest": {
+      "id": "glm-latest"
+    },
+    "kimi-k2.7-code": {
+      "displayName": "Kimi K2.7 Code",
+      "maxInputTokens": 262144,
+      "maxOutputTokens": 32768,
+      "supportsVision": true,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true,
+      "id": "kimi-k2.7-code"
+    },
+    "kimi-k3": {
+      "displayName": "Kimi K3",
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 131072,
+      "supportsVision": true,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true,
+      "id": "kimi-k3"
+    },
+    "kimi-latest": {
+      "maxInputTokens": 131072,
+      "maxOutputTokens": 131072,
+      "maxTokens": 131072,
+      "supportsVision": true,
+      "supportsFunctionCalling": true,
+      "id": "kimi-latest"
+    },
+    "minimax-latest": {
+      "id": "minimax-latest"
+    },
+    "minimax-m3": {
+      "displayName": "MiniMax M3",
+      "maxInputTokens": 512000,
+      "maxOutputTokens": 512000,
+      "supportsVision": true,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true,
+      "id": "minimax-m3"
+    }
+  }
+}

@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { HttpRequestError } from "@volcengine/sdk-core";
-import { createCodingPlanProvider, login } from "../extensions/index.ts";
+import {
+  createCodingPlanProvider,
+  login,
+  migrateCachedModels,
+} from "../extensions/index.ts";
+import { modelFromId, resolveModelMetadata } from "../extensions/model-manifest.ts";
 import {
   fetchPlanModels,
   ListArkCodingPlanModelCommand,
@@ -64,10 +69,13 @@ test("loads only model IDs returned by ListArkCodingPlanModel", async () => {
           "/ListArkCodingPlanModel/2024-01-01/ark/post/application_json/",
         );
         assert.equal(options.abortSignal.aborted, false);
+        assert.equal(options.timeout, 15_000);
         return {
           Result: {
             Datas: [
+              { ModelID: " " },
               { ModelID: "doubao-seed-2.0-code" },
+              { ModelID: " doubao-seed-2.0-code " },
               { ModelID: "new-coding-model" },
             ],
           },
@@ -78,6 +86,47 @@ test("loads only model IDs returned by ListArkCodingPlanModel", async () => {
   const models = await fetchPlanModels(context(), factory);
   assert.deepEqual(models.map((model) => model.id), ["doubao-seed-2.0-code", "new-coding-model"]);
   assert.equal(models[0]?.provider, "volcengine-coding-plan");
+});
+
+test("manifest metadata and conservative unknown fallback are applied", () => {
+  assert.equal(
+    resolveModelMetadata("Volcengine/Doubao Seed 2.1 Turbo")?.id,
+    "doubao-seed-2-1-turbo",
+  );
+  const known = modelFromId("doubao-seed-2-1-turbo");
+  assert.equal(known.contextWindow, 256_000);
+  assert.equal(known.maxTokens, 256_000);
+  assert.deepEqual(known.input, ["text", "image"]);
+  assert.equal(known.reasoning, true);
+  assert.deepEqual(known.cost, {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+  });
+
+  const unknown = modelFromId("future-coding-model");
+  assert.equal(unknown.contextWindow, 128_000);
+  assert.equal(unknown.maxTokens, 16_384);
+  assert.deepEqual(unknown.input, ["text"]);
+  assert.equal(unknown.reasoning, false);
+});
+
+test("refreshes metadata in persisted models without changing IDs", () => {
+  const stored = {
+    checkedAt: 1,
+    models: [{
+      ...modelFromId("doubao-seed-2-1-turbo"),
+      contextWindow: 1,
+      maxTokens: 1,
+      reasoning: false,
+    }],
+  };
+  const migrated = migrateCachedModels(stored);
+  assert.equal(migrated?.models[0]?.id, "doubao-seed-2-1-turbo");
+  assert.equal(migrated?.models[0]?.contextWindow, 256_000);
+  assert.equal(migrated?.models[0]?.maxTokens, 256_000);
+  assert.equal(migrated?.models[0]?.reasoning, true);
 });
 
 test("accepts an empty official catalog", async () => {

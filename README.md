@@ -4,7 +4,7 @@
 
 | 包 | Provider ID | 用途 |
 | --- | --- | --- |
-| `packages/volcengine-ark` | `volcengine` | 普通方舟推理接入点 |
+| `packages/volcengine-ark` | `volcengine-ark` | 普通方舟推理接入点 |
 | `packages/volcengine-coding-plan` | `volcengine-coding-plan` | Coding Plan 个人版 |
 | `packages/volcengine-agent-plan` | `volcengine-agent-plan` | Agent Plan 个人版 |
 
@@ -47,7 +47,7 @@ pi install -l ./packages/volcengine-agent-plan
 - API Key：调用推理数据面。
 - Access Key / Secret Key：签名调用北京地域 `ListEndpoints`，自动分页拉取接入点。
 
-在 Pi 中执行 `/login`，选择 `volcengine` 并依次输入三项凭据。
+在 Pi 中执行 `/login`，选择 `volcengine-ark` 并依次输入三项凭据。
 
 只有处于可调用状态的文本/Chat 接入点会注册为聊天模型。图片和视频模型保留在同一
 Extension 的媒体目录中，并通过原生工具调用，不会被注册成 `openai-completions`。
@@ -68,7 +68,7 @@ Pi 中显示纯聊天模型名称，例如
 作为命令参数；传入 `clear` 可清除默认值。使用 `/media-dir` 设置输出目录。
 
 这些设置保存在 provider 专属的
-`~/.pi/agent/providers/volcengine.json` 中，会跨项目和会话复用。默认输出目录仍为当前项目的
+`~/.pi/agent/providers/volcengine-ark.json` 中，会跨项目和会话复用。默认输出目录仍为当前项目的
 `.pi/media`。工具调用中显式传入的 `model` 参数优先于 provider 默认模型。
 
 生成产物会立即下载，并附带 JSON 元数据。图片支持本地路径、HTTP(S)、TOS 和 data URL 参考图；
@@ -94,6 +94,17 @@ POST https://ark.cn-beijing.volcengineapi.com/?Action=ListArkCodingPlanModel&Ver
 
 扩展只注册该接口实时返回的 `ModelID`，不包含硬编码模型列表。接口不可用、鉴权失败或响应格式变化时，Pi 保留最近一次成功目录；首次启动没有 AK/SK 或拉取失败时目录为空。
 
+模型能力来自包内独立 manifest，而不是根据模型名称猜测。更新方式：
+
+```bash
+pnpm --filter @ai.hermes/volcengine-coding-plan update:manifest
+# 使用已缓存的 LiteLLM 数据：
+pnpm --filter @ai.hermes/volcengine-coding-plan update:manifest:cached
+```
+
+生成器以官方目录决定模型集合，再依次参考 LiteLLM、Ark manifest 和
+`scripts/data/model-overrides.json` 补齐能力；歧义匹配必须添加 Plan override。
+
 ## Agent Plan
 
 在 Pi 中执行 `/login` 并选择 `volcengine-agent-plan`，或设置：
@@ -117,7 +128,18 @@ POST https://ark.cn-beijing.volcengineapi.com/?Action=ListArkAgentPlanModel&Vers
 - 使用 `max_tokens`。
 - 不发送 `developer` role。
 - 使用 DeepSeek 风格 thinking。
-- DeepSeek 模型支持 `xhigh -> max` reasoning level 映射。
+- manifest 明确标记高等级 thinking 能力的模型支持 `xhigh -> max` 映射。
+
+Agent Plan 也使用独立 manifest：
+
+```bash
+pnpm --filter @ai.hermes/volcengine-agent-plan update:manifest
+pnpm --filter @ai.hermes/volcengine-agent-plan update:manifest:cached
+```
+
+两个更新脚本都支持 `--models-input` 离线官方目录 fixture、`--input` LiteLLM
+fixture、`--ark-manifest`、`--overrides`、`--cache` 和 `--output`。正式更新必须使用
+真实 AK/SK 调用对应官方目录接口；fixture 只用于测试。
 
 ## 模型刷新与故障行为
 
@@ -125,6 +147,10 @@ POST https://ark.cn-beijing.volcengineapi.com/?Action=ListArkAgentPlanModel&Vers
 - 401/403 会提示重新登录。
 - 网络错误、5xx、超时、取消、畸形 JSON 不会发布新目录，因此不会清空缓存。
 - 空数组是有效远端结果；两个 Plan 包都不提供静态模型基线。
+- manifest 只补充元数据，不会引入官方接口本次未返回的模型。
+- 缺失元数据的 Coding 模型回退为文本、非 reasoning、128K context、16K output；
+  Agent 模型保留 reasoning 兼容，但不会启用未经确认的 `xhigh`。
+- manifest 更新后会迁移已持久化模型的能力元数据，即使模型 ID 没有变化。
 - Plan 订阅及无法确定价格的普通方舟模型，Pi `cost` 暂使用零值。该值不代表免费。
 - 当前仅支持中国北京地域与个人版 Coding/Agent Plan。
 
