@@ -3,7 +3,7 @@
     "repository": "BerriAI/litellm",
     "ref": "litellm_internal_staging",
     "commit": "31a67561ab23794bd9bdb72489b05f06e10b1c03",
-    "generatedAt": "2026-08-26T07:35:00.667Z",
+    "generatedAt": "2026-08-26T08:56:30.756Z",
     "arkOperation": "ListFoundationModels",
     "localOverrides": "model-overrides.json"
   },
@@ -183,7 +183,14 @@
       ],
       "domains": [
         "LLM"
-      ]
+      ],
+      "mode": "chat",
+      "maxInputTokens": 32000,
+      "maxOutputTokens": 12000,
+      "maxTokens": 12000,
+      "supportsVision": false,
+      "supportsReasoning": false,
+      "supportsFunctionCalling": true
     },
     "doubao-1-5-pro-256k-250115": {
       "name": "doubao-1-5-pro-256k",
@@ -194,7 +201,14 @@
       ],
       "domains": [
         "LLM"
-      ]
+      ],
+      "mode": "chat",
+      "maxInputTokens": 256000,
+      "maxOutputTokens": 12000,
+      "maxTokens": 12000,
+      "supportsVision": false,
+      "supportsReasoning": false,
+      "supportsFunctionCalling": true
     },
     "doubao-1-5-pro-32k-250115": {
       "name": "doubao-1-5-pro-32k",
@@ -205,7 +219,14 @@
       ],
       "domains": [
         "LLM"
-      ]
+      ],
+      "mode": "chat",
+      "maxInputTokens": 128000,
+      "maxOutputTokens": 16000,
+      "maxTokens": 16000,
+      "supportsVision": false,
+      "supportsReasoning": false,
+      "supportsFunctionCalling": true
     },
     "doubao-1-5-thinking-pro-250415": {
       "name": "doubao-1-5-thinking-pro",
@@ -216,7 +237,14 @@
       ],
       "domains": [
         "LLM"
-      ]
+      ],
+      "mode": "chat",
+      "maxInputTokens": 128000,
+      "maxOutputTokens": 16000,
+      "maxTokens": 16000,
+      "supportsVision": false,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true
     },
     "doubao-1-5-thinking-vision-pro-250428": {
       "name": "doubao-1-5-thinking-vision-pro",
@@ -227,7 +255,14 @@
       ],
       "domains": [
         "LLM"
-      ]
+      ],
+      "mode": "chat",
+      "maxInputTokens": 128000,
+      "maxOutputTokens": 16000,
+      "maxTokens": 16000,
+      "supportsVision": true,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true
     },
     "doubao-1-5-ui-tars-250428": {
       "name": "doubao-1-5-ui-tars",
@@ -238,7 +273,14 @@
       ],
       "domains": [
         "LLM"
-      ]
+      ],
+      "mode": "chat",
+      "maxInputTokens": 128000,
+      "maxOutputTokens": 16000,
+      "maxTokens": 16000,
+      "supportsVision": true,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": false
     },
     "doubao-1-5-vision-lite-250315": {
       "name": "doubao-1-5-vision-lite",
@@ -249,7 +291,14 @@
       ],
       "domains": [
         "LLM"
-      ]
+      ],
+      "mode": "chat",
+      "maxInputTokens": 128000,
+      "maxOutputTokens": 16000,
+      "maxTokens": 16000,
+      "supportsVision": true,
+      "supportsReasoning": false,
+      "supportsFunctionCalling": true
     },
     "doubao-1-5-vision-pro-250328": {
       "name": "doubao-1-5-vision-pro",
@@ -260,7 +309,14 @@
       ],
       "domains": [
         "LLM"
-      ]
+      ],
+      "mode": "chat",
+      "maxInputTokens": 128000,
+      "maxOutputTokens": 16000,
+      "maxTokens": 16000,
+      "supportsVision": true,
+      "supportsReasoning": false,
+      "supportsFunctionCalling": true
     },
     "doubao-1-5-vision-pro-32k-250115": {
       "name": "doubao-1-5-vision-pro-32k",
@@ -271,7 +327,14 @@
       ],
       "domains": [
         "LLM"
-      ]
+      ],
+      "mode": "chat",
+      "maxInputTokens": 32000,
+      "maxOutputTokens": 12000,
+      "maxTokens": 12000,
+      "supportsVision": true,
+      "supportsReasoning": false,
+      "supportsFunctionCalling": true
     },
     "doubao-clasi": {
       "name": "doubao-clasi",
@@ -341,7 +404,14 @@
       ],
       "domains": [
         "LLM"
-      ]
+      ],
+      "mode": "chat",
+      "maxInputTokens": 128000,
+      "maxOutputTokens": 4000,
+      "maxTokens": 4000,
+      "supportsVision": false,
+      "supportsReasoning": false,
+      "supportsFunctionCalling": false
     },
     "doubao-lite-32k-240828": {
       "name": "doubao-lite-32k",
@@ -352,7 +422,14 @@
       ],
       "domains": [
         "LLM"
-      ]
+      ],
+      "mode": "chat",
+      "maxInputTokens": 32000,
+      "maxOutputTokens": 4000,
+      "maxTokens": 4000,
+      "supportsVision": false,
+      "supportsReasoning": false,
+      "supportsFunctionCalling": false
     },
     "doubao-lite-4k-character-240828": {
       "name": "doubao-lite-4k",
@@ -363,7 +440,14 @@
       ],
       "domains": [
         "LLM"
-      ]
+      ],
+      "mode": "chat",
+      "maxInputTokens": 4000,
+      "maxOutputTokens": 4000,
+      "maxTokens": 4000,
+      "supportsVision": false,
+      "supportsReasoning": false,
+      "supportsFunctionCalling": false
     },
     "doubao-pro-128k-240628": {
       "name": "doubao-pro-128k",
@@ -374,7 +458,14 @@
       ],
       "domains": [
         "LLM"
-      ]
+      ],
+      "mode": "chat",
+      "maxInputTokens": 128000,
+      "maxOutputTokens": 4000,
+      "maxTokens": 4000,
+      "supportsVision": false,
+      "supportsReasoning": false,
+      "supportsFunctionCalling": false
     },
     "doubao-pro-256k-241115": {
       "name": "doubao-pro-256k",
@@ -385,7 +476,14 @@
       ],
       "domains": [
         "LLM"
-      ]
+      ],
+      "mode": "chat",
+      "maxInputTokens": 256000,
+      "maxOutputTokens": 4000,
+      "maxTokens": 4000,
+      "supportsVision": false,
+      "supportsReasoning": false,
+      "supportsFunctionCalling": true
     },
     "doubao-pro-32k-241215": {
       "name": "doubao-pro-32k",
@@ -396,7 +494,14 @@
       ],
       "domains": [
         "LLM"
-      ]
+      ],
+      "mode": "chat",
+      "maxInputTokens": 32000,
+      "maxOutputTokens": 4000,
+      "maxTokens": 4000,
+      "supportsVision": false,
+      "supportsReasoning": false,
+      "supportsFunctionCalling": true
     },
     "doubao-pro-4k-240515": {
       "name": "doubao-pro-4k",
@@ -407,7 +512,14 @@
       ],
       "domains": [
         "LLM"
-      ]
+      ],
+      "mode": "chat",
+      "maxInputTokens": 4000,
+      "maxOutputTokens": 4000,
+      "maxTokens": 4000,
+      "supportsVision": false,
+      "supportsReasoning": false,
+      "supportsFunctionCalling": false
     },
     "doubao-realtime": {
       "name": "doubao-realtime",
@@ -437,7 +549,14 @@
       ],
       "domains": [
         "LLM"
-      ]
+      ],
+      "mode": "chat",
+      "maxInputTokens": 256000,
+      "maxOutputTokens": 32000,
+      "maxTokens": 32000,
+      "supportsVision": true,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true
     },
     "doubao-seed-1-6-flash-250828": {
       "name": "doubao-seed-1-6-flash",
@@ -448,7 +567,14 @@
       ],
       "domains": [
         "LLM"
-      ]
+      ],
+      "mode": "chat",
+      "maxInputTokens": 256000,
+      "maxOutputTokens": 32000,
+      "maxTokens": 32000,
+      "supportsVision": true,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true
     },
     "doubao-seed-1-6-lite-251015": {
       "name": "doubao-seed-1-6-lite",
@@ -460,7 +586,14 @@
       ],
       "domains": [
         "LLM"
-      ]
+      ],
+      "mode": "chat",
+      "maxInputTokens": 256000,
+      "maxOutputTokens": 32000,
+      "maxTokens": 32000,
+      "supportsVision": true,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true
     },
     "doubao-seed-1-6-thinking-250715": {
       "name": "doubao-seed-1-6-thinking",
@@ -472,7 +605,14 @@
       ],
       "domains": [
         "LLM"
-      ]
+      ],
+      "mode": "chat",
+      "maxInputTokens": 256000,
+      "maxOutputTokens": 32000,
+      "maxTokens": 32000,
+      "supportsVision": true,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true
     },
     "doubao-seed-1-6-vision-250815": {
       "name": "doubao-seed-1-6-vision",
@@ -483,7 +623,14 @@
       ],
       "domains": [
         "LLM"
-      ]
+      ],
+      "mode": "chat",
+      "maxInputTokens": 256000,
+      "maxOutputTokens": 32000,
+      "maxTokens": 32000,
+      "supportsVision": true,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true
     },
     "doubao-seed-1-8-251228": {
       "name": "doubao-seed-1-8",
@@ -495,7 +642,14 @@
       ],
       "domains": [
         "LLM"
-      ]
+      ],
+      "mode": "chat",
+      "maxInputTokens": 256000,
+      "maxOutputTokens": 32000,
+      "maxTokens": 32000,
+      "supportsVision": true,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true
     },
     "doubao-seed-2-0-code-preview-260215": {
       "name": "doubao-seed-2-0-code",
@@ -543,7 +697,14 @@
       ],
       "domains": [
         "LLM"
-      ]
+      ],
+      "mode": "chat",
+      "maxInputTokens": 256000,
+      "maxOutputTokens": 128000,
+      "maxTokens": 128000,
+      "supportsVision": true,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true
     },
     "doubao-seed-2-0-mini-260428": {
       "name": "doubao-seed-2-0-mini",
@@ -555,7 +716,14 @@
       ],
       "domains": [
         "LLM"
-      ]
+      ],
+      "mode": "chat",
+      "maxInputTokens": 256000,
+      "maxOutputTokens": 128000,
+      "maxTokens": 128000,
+      "supportsVision": true,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true
     },
     "doubao-seed-2-0-pro-260215": {
       "name": "doubao-seed-2-0-pro",
@@ -603,7 +771,14 @@
       ],
       "domains": [
         "LLM"
-      ]
+      ],
+      "mode": "chat",
+      "maxInputTokens": 256000,
+      "maxOutputTokens": 256000,
+      "maxTokens": 256000,
+      "supportsVision": true,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true
     },
     "doubao-seed-2-1-turbo-260628": {
       "name": "doubao-seed-2-1-turbo",
@@ -615,7 +790,14 @@
       ],
       "domains": [
         "LLM"
-      ]
+      ],
+      "mode": "chat",
+      "maxInputTokens": 256000,
+      "maxOutputTokens": 256000,
+      "maxTokens": 256000,
+      "supportsVision": true,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true
     },
     "doubao-seed-character-260628": {
       "name": "doubao-seed-character",
@@ -626,7 +808,14 @@
       ],
       "domains": [
         "LLM"
-      ]
+      ],
+      "mode": "chat",
+      "maxInputTokens": 128000,
+      "maxOutputTokens": 32000,
+      "maxTokens": 32000,
+      "supportsVision": true,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true
     },
     "doubao-seed-code-preview-251028": {
       "name": "doubao-seed-code",
@@ -638,7 +827,14 @@
       ],
       "domains": [
         "LLM"
-      ]
+      ],
+      "mode": "chat",
+      "maxInputTokens": 256000,
+      "maxOutputTokens": 32000,
+      "maxTokens": 32000,
+      "supportsVision": true,
+      "supportsReasoning": true,
+      "supportsFunctionCalling": true
     },
     "doubao-seed-evolving-latest-version": {
       "name": "doubao-seed-evolving",
@@ -665,7 +861,14 @@
       "primaryVersion": "250915",
       "domains": [
         "LLM"
-      ]
+      ],
+      "mode": "chat",
+      "maxInputTokens": 4000,
+      "maxOutputTokens": 3000,
+      "maxTokens": 3000,
+      "supportsVision": false,
+      "supportsReasoning": false,
+      "supportsFunctionCalling": false
     },
     "doubao-seed3d-1-0-250928": {
       "name": "doubao-seed3d-1-0",
@@ -887,7 +1090,14 @@
       ],
       "domains": [
         "LLM"
-      ]
+      ],
+      "mode": "chat",
+      "maxInputTokens": 32000,
+      "maxOutputTokens": 4000,
+      "maxTokens": 4000,
+      "supportsVision": true,
+      "supportsReasoning": false,
+      "supportsFunctionCalling": false
     },
     "doubao-vision-pro-32k-241028": {
       "name": "doubao-vision-pro-32k",
@@ -898,7 +1108,14 @@
       ],
       "domains": [
         "LLM"
-      ]
+      ],
+      "mode": "chat",
+      "maxInputTokens": 32000,
+      "maxOutputTokens": 4000,
+      "maxTokens": 4000,
+      "supportsVision": true,
+      "supportsReasoning": false,
+      "supportsFunctionCalling": false
     },
     "glm-4-7-251222": {
       "name": "glm-4-7",
