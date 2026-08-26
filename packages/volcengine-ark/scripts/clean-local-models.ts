@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 
-const PROVIDER_ID = "volcengine";
+const PROVIDER_ID = "volcengine-ark";
 
 type JsonObject = Record<string, unknown>;
 

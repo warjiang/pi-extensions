@@ -1,7 +1,7 @@
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-export const PROVIDER_ID = "volcengine";
+export const PROVIDER_ID = "volcengine-ark";
 export const PROVIDER_NAME = "Volcengine Ark";
 export const BASE_URL = "https://ark.cn-beijing.volces.com/api/v3";
 export const ENV_NAMES = {

@@ -19,7 +19,7 @@ test("removes only the static Volcengine provider and its stale default model", 
   const settingsPath = join(agentDir, "settings.json");
   await writeFile(modelsPath, JSON.stringify({
     providers: {
-      volcengine: {
+      "volcengine-ark": {
         models: [{ id: "deepseek-v4-pro-260425" }],
       },
       other: {
@@ -28,7 +28,7 @@ test("removes only the static Volcengine provider and its stale default model", 
     },
   }));
   await writeFile(settingsPath, JSON.stringify({
-    defaultProvider: "volcengine",
+    defaultProvider: "volcengine-ark",
     defaultModel: "deepseek-v4-pro-260425",
     theme: "dark",
   }));
@@ -49,7 +49,7 @@ test("removes only the static Volcengine provider and its stale default model", 
       },
     });
     assert.deepEqual(await readJson(settingsPath), {
-      defaultProvider: "volcengine",
+      defaultProvider: "volcengine-ark",
       theme: "dark",
     });
   } finally {
@@ -62,7 +62,7 @@ test("removes only the Volcengine model cache", async () => {
   const storePath = join(agentDir, "models-store.json");
   await mkdir(agentDir, { recursive: true });
   await writeFile(storePath, JSON.stringify({
-    volcengine: {
+    "volcengine-ark": {
       models: [{ id: "deepseek-v4-pro" }],
     },
     other: {

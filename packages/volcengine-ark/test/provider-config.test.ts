@@ -10,7 +10,7 @@ import {
 
 test("persists and updates provider media config", async () => {
   const dir = await mkdtemp(join(tmpdir(), "volcengine-config-"));
-  const path = join(dir, "providers", "volcengine.json");
+  const path = join(dir, "providers", "volcengine-ark.json");
   try {
     assert.deepEqual(await readProviderConfig(path), {});
     await updateProviderConfig({
